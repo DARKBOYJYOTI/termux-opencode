@@ -7,11 +7,14 @@
 #   curl -fsSL .../install.sh | bash -s -- -v 1.19.1
 #
 # What it does:
-#   1. resolves the version (explicit -v, else this repo's latest release),
-#   2. downloads opencode_<ver>_aarch64.deb + its SHA-256 file,
-#   3. verifies the checksum (aborts on mismatch),
-#   4. removes the legacy `opencode1` package if present (user data untouched),
-#   5. installs via dpkg and verifies `opencode --version`.
+#   1. updates Termux package lists and ensures required packages
+#      (curl + ca-certificates — the runtime needs them for downloads and
+#      the daily release-update notice over HTTPS),
+#   2. resolves the version (explicit -v, else this repo's latest release),
+#   3. downloads opencode_<ver>_aarch64.deb + its SHA-256 file,
+#   4. verifies the checksum (aborts on mismatch),
+#   5. removes the legacy `opencode1` package if present (user data untouched),
+#   6. installs via dpkg and verifies `opencode --version`.
 #
 # It never touches your shell config, never adds aliases, and never contacts
 # the official OpenCode channel — releases come only from this repository.
@@ -43,6 +46,26 @@ case "$(uname -m)" in
 	aarch64|arm64) ;;
 	*) echo "Error: only AArch64 Android is supported (uname -m: $(uname -m))" >&2; exit 1 ;;
 esac
+
+echo "==> updating Termux package lists..."
+pkg update
+echo "==> ensuring required packages (curl, ca-certificates)..."
+pkg install -y curl ca-certificates
+
+# Drop the stale third-party apt source left by the old upstream installer:
+# it serves no packages and only slows updates. Releases come only from
+# this repository's GitHub releases (downloaded + checksum-verified below).
+TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+STALE_SOURCE="$TERMUX_PREFIX/etc/apt/sources.list.d/hope2333-bootstrap.list"
+if [[ -f "$STALE_SOURCE" ]]; then
+	echo "==> removing stale upstream apt source (hope2333-bootstrap.list)..."
+	rm -f "$STALE_SOURCE"
+	pkg update
+fi
+if dpkg-query -W -f='${Status}' hope2333-mirrorlist 2>/dev/null | grep -q "installed"; then
+	echo "==> removing broken hope2333-mirrorlist package..."
+	dpkg --remove --force-remove-reinstreq hope2333-mirrorlist 2>/dev/null || true
+fi
 
 if [[ -z "$VERSION" ]]; then
 	echo "==> resolving latest release..."

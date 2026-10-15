@@ -38,8 +38,10 @@ on install; user data is preserved.)
 
 ## Install
 
-One line — installs the latest release (checksum-verified, legacy
-`opencode1` replaced automatically, user data preserved):
+One line — updates Termux lists, ensures required packages (`curl`,
+`ca-certificates`), installs the latest release (checksum-verified, legacy
+`opencode1` replaced automatically, stale upstream apt source dropped, user
+data preserved):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DARKBOYJYOTI/termux-opencode/main/install.sh | bash
