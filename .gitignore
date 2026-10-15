@@ -1,0 +1,20 @@
+# Build artifacts (disposable, device-local)
+artifacts/
+packing/dpkg-native/
+*.deb
+*.pkg.tar.*
+*.tgz
+*.tar.gz
+*.zip
+
+# Downloaded fixtures and vendored test runners (fetched on demand)
+tests/vendor/
+tests/transplant/fixtures/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Local-only metadata
+.ai/
+.omo/

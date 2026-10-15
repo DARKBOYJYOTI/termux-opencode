@@ -1,0 +1,97 @@
+name: Build opencode1 native Android package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Upstream v1 OpenCode version"
+        required: true
+        default: "1.18.34"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-opencode1:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+
+    steps:
+      - name: Check out fork
+        uses: actions/checkout@v4
+
+      - name: Validate v1 version input
+        run: |
+          [[ "$VERSION" =~ ^1\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Only stable v1 versions (for example 1.18.34) are accepted: $VERSION" >&2
+            exit 1
+          }
+
+      - name: Install Android NDK r27c
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install NDK package
+        run: |
+          sdkmanager --install "ndk;27.2.12479018"
+          echo "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      - name: Download upstream AArch64 package
+        run: |
+          mkdir -p work
+          npm pack "opencode-linux-arm64@$VERSION" --pack-destination work
+          TGZ="$(printf '%s\n' work/opencode-linux-arm64-*.tgz | head -n 1)"
+          test -f "$TGZ"
+          echo "TGZ=$TGZ" >> "$GITHUB_ENV"
+
+      - name: Transplant into Android/Bionic runtime
+        run: |
+          python3 tools/transplant/transplant.py all --ver "$VERSION" --tgz "$TGZ" --no-execve
+          test -x "artifacts/transplant/$VERSION/opencode-native-revived"
+
+      - name: Build seccomp handler and harden v1 runtime
+        run: |
+          set -euo pipefail
+          OUT="artifacts/transplant/$VERSION"
+          BIN="$OUT/opencode-native-tui"
+          [[ -x "$BIN" ]] || BIN="$OUT/opencode-native-revived"
+          test -x "$BIN"
+          aarch64-linux-android31-clang -shared -fPIC -O2 \
+            -o "$OUT/libopencode-crhandler.so" tools/shim/sigsys_handler.c
+          python3 tools/transplant/crhandler_patch.py "$BIN"
+          grep -aqF libopencode-crhandler.so "$BIN" || {
+            echo "hardened ELF is missing the crhandler marker" >&2
+            exit 1
+          }
+
+      - name: Package only opencode1
+        run: |
+          ARCH_DEB=aarch64 \
+          VERSION="$VERSION" \
+          TRANSPLANT_ROOT="$GITHUB_WORKSPACE/artifacts/transplant" \
+            bash ./scripts/package/package_deb_native.sh
+          DEB="packing/dpkg-native/opencode1_${VERSION}_aarch64.deb"
+          dpkg-deb --field "$DEB" Package Version Architecture
+          dpkg-deb --contents "$DEB" | grep 'lib/opencode/libopencode-crhandler.so'
+          sha256sum "$DEB" | tee "$DEB.sha256"
+
+      - name: Run transplant golden regression
+        run: |
+          if [[ -z "$(ls -A tests/transplant/fixtures/tgz/ 2>/dev/null)" ]]; then
+            bash scripts/fetch-fixtures.sh
+          fi
+          python3 tests/transplant/test_golden.py --fixtures-dir tests/transplant/fixtures/tgz
+
+      - name: Upload opencode1 package and build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode1-${{ env.VERSION }}-android-aarch64
+          path: |
+            packing/dpkg-native/opencode1_${{ env.VERSION }}_aarch64.deb
+            packing/dpkg-native/opencode1_${{ env.VERSION }}_aarch64.deb.sha256
+            artifacts/transplant/${{ env.VERSION }}/report.json
+          if-no-files-found: error
+          retention-days: 14
