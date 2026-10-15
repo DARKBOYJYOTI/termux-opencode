@@ -52,17 +52,19 @@ NATIVE_BIN="$TRANSPLANT_ROOT/$VERSION/opencode-native-tui"
 	exit 1
 }
 
-# v1 (1.x) packages are renamed opencode1 (coexist with v2); v2 keeps `opencode`.
+# This repository ships v1 (1.x) as the plain `opencode` command — the rename
+# from `opencode1` keeps every integration (plugins, MCP, scripts) working
+# without manual patching. The legacy `opencode1` packages are replaced.
 case "$VERSION" in
-	1.*) PKG_NAME="opencode1"; PKG_CONFLICTS="opencode1-wrapper, opencode1-compressed, opencode1-wrapper-standalone"; PKG_REPLACES="opencode (<< 2.0.0)" ;;
+	1.*) PKG_NAME="opencode"; PKG_CONFLICTS="opencode1, opencode1-wrapper, opencode1-compressed, opencode1-wrapper-standalone, opencode-wrapper"; PKG_REPLACES="opencode1, opencode1-wrapper-standalone" ;;
 	*)   PKG_NAME="opencode";  PKG_CONFLICTS="opencode-wrapper"; PKG_REPLACES="" ;;
 esac
 
 # The v1 native family must carry the self-activating Android seccomp handler.
 # Without it, Android's zygote filter traps Bun's close_range syscall with
-# SIGSYS before even `opencode1 --version` can run (observed on Android 12 / 4.14).
+# SIGSYS before even `opencode --version` can run (observed on Android 12 / 4.14).
 if [[ "$VERSION" == 1.* ]] && ! grep -aqF libopencode-crhandler.so "$NATIVE_BIN"; then
-	echo "Error: refusing to package an unhardened opencode1 native runtime" >&2
+	echo "Error: refusing to package an unhardened opencode native runtime" >&2
 	echo "       run the native transplant + harden-native steps before packaging" >&2
 	exit 1
 fi
@@ -80,7 +82,7 @@ DEB_ROOT="$ROOT_DIR/packing/dpkg-native/work"
 OUT_DIR="$ROOT_DIR/packing/dpkg-native"
 OUT_FILE="$OUT_DIR/${PKG_NAME}_${VERSION}_${ARCH_DEB}.deb"
 if [[ "$VERSION" == 1.* ]]; then
-	DESCRIPTION="OpenCode1 native Bionic CLI for Android/Termux (v1 family)."
+	DESCRIPTION="OpenCode v1 native Bionic CLI for Android/Termux (termux-opencode build)."
 else
 	DESCRIPTION="OpenCode native Bionic mainline for Android/Termux. Full TUI via bionic libopentui.so; zero glibc dependencies."
 fi
@@ -89,15 +91,17 @@ rm -rf "$DEB_ROOT"
 mkdir -p "$DEB_ROOT/DEBIAN" "$DEB_ROOT$PREFIX/bin" "$OUT_DIR"
 chmod 755 "$DEB_ROOT" "$DEB_ROOT/DEBIAN"
 
-if [[ "$VERSION" == 1.* ]]; then BIN_NAME="opencode1"; LIB_DIR="opencode1"; else BIN_NAME="opencode"; LIB_DIR="opencode"; fi
-[[ -f "$ROOT_DIR/scripts/opencode1-launcher.sh" ]] || {
-	echo "Error: scripts/opencode1-launcher.sh missing (v1 launcher source)" >&2; exit 1; }
+if [[ "$VERSION" == 1.* ]]; then BIN_NAME="opencode"; LIB_DIR="opencode1"; else BIN_NAME="opencode"; LIB_DIR="opencode"; fi
+[[ -f "$ROOT_DIR/scripts/opencode-launcher.sh" ]] || {
+	echo "Error: scripts/opencode-launcher.sh missing (v1 launcher source)" >&2; exit 1; }
 if [[ "$VERSION" == 1.* ]]; then
-	# v12.1: v1 layered — bare runtime under lib/opencode1/runtime/ (DT_RUNPATH
+	# v1 layered — bare runtime under lib/opencode1/runtime/ (DT_RUNPATH
 	# $ORIGIN/../lib/opencode resolved via the launcher's LD_LIBRARY_PATH) +
-	# the XDG-isolating launcher at bin/opencode1. v2 stays bin-direct.
+	# the XDG-isolating launcher at bin/opencode. The lib/opencode1 directory
+	# name is an internal detail kept for DT_RUNPATH compatibility; the
+	# user-facing command is `opencode`.
 	install -D -m755 "$NATIVE_BIN" "$DEB_ROOT$PREFIX/lib/opencode1/runtime/opencode"
-	install -D -m755 "$ROOT_DIR/scripts/opencode1-launcher.sh" "$DEB_ROOT$PREFIX/bin/opencode1"
+	install -D -m755 "$ROOT_DIR/scripts/opencode-launcher.sh" "$DEB_ROOT$PREFIX/bin/opencode"
 else
 	install -m755 "$NATIVE_BIN" "$DEB_ROOT$PREFIX/bin/$BIN_NAME"
 fi
@@ -137,7 +141,7 @@ Section: utils
 Priority: optional
 Depends:
 Conflicts: $PKG_CONFLICTS
-Replaces: opencode1-wrapper-standalone${PKG_REPLACES:+, $PKG_REPLACES}
+Replaces: ${PKG_REPLACES:-opencode1-wrapper-standalone}
 Description: $DESCRIPTION
 EOF
 
@@ -158,8 +162,7 @@ if hook_enabled stale-serve-kill "2.0.[0-3]"; then
 # other generation's runtime path differs and is never matched.
 P="$(printf '%s' "${DPKG_MAINTSCRIPT_PACKAGE:-}")"
 case "$P" in
-  opencode)  SRV="$PREFIX/bin/opencode" ;;
-  opencode1) SRV="$PREFIX/lib/opencode1/runtime/opencode" ;;
+  opencode)  SRV="$PREFIX/lib/opencode1/runtime/opencode" ;;
   *)         SRV="" ;;
 esac
 if [ -n "$SRV" ] && pgrep -f "^$SRV( |$)" >/dev/null 2>&1; then
@@ -189,15 +192,14 @@ if [ -f "$STALE" ] && command -v file >/dev/null 2>&1; then
   fi
 fi
 
-# v1 (opencode1) or v2 (opencode) install hook.
-# v1: auto-migrate any pre-v2-era config under ~/.config/opencode (etc.) into
-#     the opencode1-isolated dirs, exactly once, never clobbering existing
-#     opencode1 data. Requires scripts/migrate-to-opencode1.sh to be on PATH.
+# v1 data-migration hook. The user-facing command is `opencode`, but v1 data
+# lives in the opencode1-isolated dirs (exactly once, never clobbering).
+# Requires scripts/migrate-to-opencode1.sh to be on PATH.
 CFG_DIR="$(printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/opencode")"
 case "${PKG_NAME:-$DPKG_MAINTSCRIPT_PACKAGE}" in
-  opencode1)
-    echo "OpenCode1 (v1 family) installed — coexists with v2 opencode."
-    # Feature detection FIRST (v12.2): `check` prints the detected state and
+  opencode)
+    echo "OpenCode v1 (termux-opencode build) installed."
+    # Feature detection FIRST: `check` prints the detected state and
     # exits 0 when every skip condition is met — only then does isolate run,
     # and unsilenced so the operator sees detected-state and every action.
     if { [ -e "$CFG_DIR" ] || [ -d "${CFG_DIR}1" ]; } && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
@@ -214,16 +216,13 @@ case "${PKG_NAME:-$DPKG_MAINTSCRIPT_PACKAGE}" in
            && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
           echo "NOTE: v1-era data still at the plain opencode/ roots and the opencode1"
           echo "      nested roots are empty. If those plain dirs hold v1 leftovers you"
-          echo "      want opencode1 to see, run:  migrate-to-opencode1.sh isolate --take-plain"
+          echo "      want opencode to see, run:  migrate-to-opencode1.sh isolate --take-plain"
           echo "      (skipped automatically because a v2 opencode package is installed)."
         fi
       fi
     else
       echo "No legacy v1 config found (or already isolated); nothing to migrate."
     fi
-    ;;
-  opencode)
-    echo "OpenCode v2 (mainline) installed — coexists with v1 opencode1."
     ;;
 esac
 exit 0

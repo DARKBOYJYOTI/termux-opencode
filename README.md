@@ -1,25 +1,30 @@
 # termux-opencode
 
-[![opencode1 native build](https://github.com/DARKBOYJYOTI/termux-opencode/actions/workflows/build-opencode1-native.yml/badge.svg?branch=main)](https://github.com/DARKBOYJYOTI/termux-opencode/actions/workflows/build-opencode1-native.yml)
+[![opencode native build](https://github.com/DARKBOYJYOTI/termux-opencode/actions/workflows/build-opencode-native.yml/badge.svg?branch=main)](https://github.com/DARKBOYJYOTI/termux-opencode/actions/workflows/build-opencode-native.yml)
 [![Unit Tests](https://github.com/DARKBOYJYOTI/termux-opencode/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/DARKBOYJYOTI/termux-opencode/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-3fb950?style=flat-square)](./LICENSE)
 [![Termux: AArch64](https://img.shields.io/badge/Termux-AArch64-1f6feb?style=flat-square)](https://termux.dev)
 [![Runtime: Bionic](https://img.shields.io/badge/Runtime-Bionic-9e6a03?style=flat-square)](#how-it-works)
 
-Native [OpenCode](https://opencode.ai) v1 (`opencode1`) packages for **Termux on
+Native [OpenCode](https://opencode.ai) v1 (`opencode`) packages for **Termux on
 Android (AArch64)**. Pure Bionic runtime, zero glibc dependencies, full TUI —
 built reproducibly and verified on a real device.
 
+The command is the plain `opencode` name, so every plugin, MCP setup, and
+script works without patching. (The legacy `opencode1` packages are replaced
+on install; user data is preserved.)
+
 > **Update-channel policy:** this repository is the only supported upgrade
 > path. Official-channel update checks and notices are disabled in the shipped
-> launcher (`OPENCODE_DISABLE_AUTOUPDATE=1`). Never run the official installer
-> over these packages — install the next release from here instead.
+> launcher (`OPENCODE_DISABLE_AUTOUPDATE=1`), and the launcher notifies you
+> about **this repository's releases** instead (see below). Never run the
+> official installer over these packages — install the next release from here.
 
 ## Status
 
 | Item | State |
 | --- | --- |
-| Current package | `opencode1` **1.19.1** (`aarch64` `.deb`) |
+| Current package | `opencode` **1.19.1** (`aarch64` `.deb`) |
 | Runtime | Transplanted native Bionic ELF + `libopencode-crhandler.so` seccomp shim + Bionic `libopentui.so` |
 | Verified on | Termux on Android 12 (API 31), kernel 4.14 — `--version`, TUI startup |
 | CI | Manual-dispatch workflow builds, hardens, packages, and regression-tests every release |
@@ -33,37 +38,50 @@ built reproducibly and verified on a real device.
 
 ## Install
 
-1. Download the `opencode1_<ver>_aarch64.deb` from the
-   [build workflow artifacts](https://github.com/DARKBOYJYOTI/termux-opencode/actions/workflows/build-opencode1-native.yml)
+1. Download the `opencode_<ver>_aarch64.deb` from the
+   [build workflow artifacts](https://github.com/DARKBOYJYOTI/termux-opencode/actions/workflows/build-opencode-native.yml)
    of a successful run (or a GitHub Release, when published).
 2. Install and verify:
 
 ```bash
-dpkg -i opencode1_1.19.1_aarch64.deb
-opencode1 --version   # must print 1.19.1
+dpkg -i opencode_1.19.1_aarch64.deb
+opencode --version   # must print 1.19.1
 ```
 
-3. Launch the TUI with `opencode1`. Existing v1 data is migrated once,
-   non-destructively, into isolated `opencode1/` directories — the plain
-   `opencode/` paths are left untouched for v2.
+3. Launch the TUI with `opencode`. Existing v1 data is migrated once,
+   non-destructively, into isolated `opencode1/` directories — kept as-is so
+   nothing is lost in the rename from the legacy `opencode1` command.
 
 ### Upgrade / downgrade
 
 ```bash
-dpkg -i opencode1_<new-ver>_aarch64.deb   # upgrade
-dpkg -i opencode1_<old-ver>_aarch64.deb   # downgrade (same command)
+dpkg -i opencode_<new-ver>_aarch64.deb   # upgrade
+dpkg -i opencode_<old-ver>_aarch64.deb   # downgrade (same command)
 ```
 
-Explicit `opencode1 upgrade` still works, but it pulls from the official
+Explicit `opencode upgrade` still works, but it pulls from the official
 channel and is **not supported** here — it can replace this hardened runtime
 with an unpatched binary that crashes on older Android kernels.
+
+### Update notifications (this repo's releases)
+
+Releases here are tagged `opencode-<ver>` (e.g. `opencode-1.19.1`). The
+launcher checks that feed — at most once a day (cached), only for interactive
+terminal sessions, and silently when offline:
+
+```text
+Update available: opencode 1.19.2 (installed 1.19.1).
+Get it: https://github.com/DARKBOYJYOTI/termux-opencode/releases (dpkg -i opencode_1.19.2_aarch64.deb)
+```
+
+Opt out any time: `TERMUX_OPENCODE_UPDATE_CHECK=0`.
 
 ## What's inside the package
 
 | Path | Purpose |
 | --- | --- |
-| `$PREFIX/bin/opencode1` | Launcher: XDG isolation, service-port split, `GH_CONFIG_DIR` passthrough, update checks off |
-| `$PREFIX/lib/opencode1/runtime/opencode` | Hardened native Bionic runtime |
+| `$PREFIX/bin/opencode` | Launcher: XDG isolation, service-port split, `GH_CONFIG_DIR` passthrough, official update checks off, repo release notice |
+| `$PREFIX/lib/opencode1/runtime/opencode` | Hardened native Bionic runtime (`lib/opencode1` is an internal path kept for loader compatibility) |
 | `$PREFIX/lib/opencode/libopencode-crhandler.so` | Self-activating seccomp shim (`close_range` SIGSYS fix) |
 | `$PREFIX/bin/migrate-to-opencode1.sh` | One-time, idempotent v1 data migration helper |
 
@@ -77,10 +95,11 @@ seccomp-filtered Android kernels.
    JavaScript module graph (byte-identical upstream input).
 2. The transplant pipeline grafts it onto the pinned Android Bun base,
    producing a Bionic executable.
-3. A guard-verified Bionic `libopentui.so` replaces the glibc-linked TUI
-   library, and a zero-displacement patch links the self-activating seccomp
-   shim as the first `DT_NEEDED` entry.
-4. The result is packaged as `opencode1`, with the shim presence asserted —
+3. The vendored, guard-verified Bionic `libopentui.so`
+   (`assets/bionic-libopentui-0.4.5.so`, SHA-256 pinned) replaces the
+   glibc-linked TUI library, and a zero-displacement patch links the
+   self-activating seccomp shim as the first `DT_NEEDED` entry.
+4. The result is packaged as `opencode`, with the shim presence asserted —
    the build fails closed instead of shipping a binary that SIGSYS-crashes.
 
 Final runtime acceptance always happens on a real Termux device.
@@ -89,10 +108,10 @@ Final runtime acceptance always happens on a real Termux device.
 
 ### Option A — GitHub Actions (recommended)
 
-`Actions → Build opencode1 native Android package → Run workflow`, with input
+`Actions → Build opencode native Android package → Run workflow`, with input
 `version` (e.g. `1.19.1`). The workflow downloads the upstream tarball,
-transplants, hardens, packages **only** `opencode1`, and uploads the `.deb` +
-SHA-256 + build report.
+transplants, grafts the Bionic TUI library, hardens, packages **only**
+`opencode`, and uploads the `.deb` + SHA-256 + build report.
 
 ### Option B — On-device (Termux, AArch64)
 
@@ -102,10 +121,10 @@ npm pack 'opencode-linux-arm64@1.19.1' --pack-destination "$TMPDIR"
 python3 tools/transplant/transplant.py all \
   --ver 1.19.1 --tgz "$TMPDIR/opencode-linux-arm64-1.19.1.tgz"
 
-# 2. Graft the Bionic TUI library
+# 2. Graft the vendored Bionic TUI library
 python3 tools/transplant/swap_tui.py \
   --binary artifacts/transplant/1.19.1/opencode-native-revived \
-  --tui-lib artifacts/transplant/opentui-bionic/libopentui.so \
+  --tui-lib assets/bionic-libopentui-0.4.5.so \
   --out artifacts/transplant/1.19.1/opencode-native-tui
 
 # 3. Harden (needs clang), package, install, verify
@@ -115,16 +134,17 @@ python3 tools/transplant/crhandler_patch.py artifacts/transplant/1.19.1/opencode
 ARCH_DEB=aarch64 VERSION=1.19.1 \
   TRANSPLANT_ROOT="$PWD/artifacts/transplant" \
   bash ./scripts/package/package_deb_native.sh
-dpkg -i packing/dpkg-native/opencode1_1.19.1_aarch64.deb
-opencode1 --version
+dpkg -i packing/dpkg-native/opencode_1.19.1_aarch64.deb
+opencode --version
 ```
 
 ## Repository layout
 
 ```text
-.github/workflows/build-opencode1-native.yml  # reproducible v1-only CI build
+.github/workflows/build-opencode-native.yml   # reproducible v1-only CI build
 .github/workflows/tests.yml                   # shell unit tests on push/PR
-scripts/opencode1-launcher.sh                  # shipped launcher (source of bin/opencode1)
+assets/bionic-libopentui-0.4.5.so              # vendored Bionic TUI lib (SHA-256 pinned)
+scripts/opencode-launcher.sh                   # shipped launcher (source of bin/opencode)
 scripts/package/package_deb_native.sh          # native .deb packager (shim is mandatory for v1)
 scripts/common.sh, fetch-fixtures.sh, ...      # shared helpers
 tools/transplant/                              # transplant + revive + harden pipeline
@@ -140,8 +160,9 @@ tests/                                         # shell unit tests + transplant g
 | --- | --- | --- |
 | `Bad system call`, exit 159 | Missing/blocked `close_range` shim | Reinstall this repo's package; never mix in official binaries |
 | `libm.so.6 not found` at TUI start | glibc `libopentui.so` in the bundle | Rebuild via this pipeline (Bionic graft step) |
-| `gh` asks to log in under `opencode1` | Stale launcher without `GH_CONFIG_DIR` passthrough | Upgrade to the current package |
-| TUI stalls waiting for background service | Stale `serve` daemon after upgrade | Kill old `opencode1 serve` processes, relaunch |
+| `gh` asks to log in under `opencode` | Stale launcher without `GH_CONFIG_DIR` passthrough | Upgrade to the current package |
+| TUI stalls waiting for background service | Stale `serve` daemon after upgrade | Kill old `opencode serve` processes, relaunch |
+| No update notice despite new release | Cache (< 24 h), non-TTY session, or offline | Wait a day, run in a terminal, check network |
 
 ## Contributing
 

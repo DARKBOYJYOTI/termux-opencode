@@ -1,4 +1,4 @@
-name: Build opencode1 native Android package
+name: Build opencode native Android package
 
 on:
   workflow_dispatch:
@@ -6,28 +6,33 @@ on:
       version:
         description: "Upstream v1 OpenCode version"
         required: true
-        default: "1.18.34"
+        default: "1.19.1"
         type: string
 
 permissions:
   contents: read
 
 jobs:
-  build-opencode1:
+  build-opencode:
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ inputs.version }}
 
     steps:
-      - name: Check out fork
+      - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Validate v1 version input
         run: |
           [[ "$VERSION" =~ ^1\.[0-9]+\.[0-9]+$ ]] || {
-            echo "Only stable v1 versions (for example 1.18.34) are accepted: $VERSION" >&2
+            echo "Only stable v1 versions (for example 1.19.1) are accepted: $VERSION" >&2
             exit 1
           }
+
+      - name: Verify vendored Bionic TUI library
+        run: |
+          sha256sum -c assets/bionic-libopentui-0.4.5.so.sha256
+          bash tools/transplant/build-libopentui.sh --check assets/bionic-libopentui-0.4.5.so
 
       - name: Install Android NDK r27c
         uses: android-actions/setup-android@v3
@@ -52,12 +57,19 @@ jobs:
           python3 tools/transplant/transplant.py all --ver "$VERSION" --tgz "$TGZ" --no-execve
           test -x "artifacts/transplant/$VERSION/opencode-native-revived"
 
+      - name: Graft Bionic TUI library
+        run: |
+          python3 tools/transplant/swap_tui.py \
+            --binary "artifacts/transplant/$VERSION/opencode-native-revived" \
+            --tui-lib assets/bionic-libopentui-0.4.5.so \
+            --out "artifacts/transplant/$VERSION/opencode-native-tui"
+          test -x "artifacts/transplant/$VERSION/opencode-native-tui"
+
       - name: Build seccomp handler and harden v1 runtime
         run: |
           set -euo pipefail
           OUT="artifacts/transplant/$VERSION"
           BIN="$OUT/opencode-native-tui"
-          [[ -x "$BIN" ]] || BIN="$OUT/opencode-native-revived"
           test -x "$BIN"
           aarch64-linux-android31-clang -shared -fPIC -O2 \
             -o "$OUT/libopencode-crhandler.so" tools/shim/sigsys_handler.c
@@ -67,15 +79,16 @@ jobs:
             exit 1
           }
 
-      - name: Package only opencode1
+      - name: Package only opencode
         run: |
           ARCH_DEB=aarch64 \
           VERSION="$VERSION" \
           TRANSPLANT_ROOT="$GITHUB_WORKSPACE/artifacts/transplant" \
             bash ./scripts/package/package_deb_native.sh
-          DEB="packing/dpkg-native/opencode1_${VERSION}_aarch64.deb"
+          DEB="packing/dpkg-native/opencode_${VERSION}_aarch64.deb"
           dpkg-deb --field "$DEB" Package Version Architecture
           dpkg-deb --contents "$DEB" | grep 'lib/opencode/libopencode-crhandler.so'
+          dpkg-deb --contents "$DEB" | grep 'bin/opencode$'
           sha256sum "$DEB" | tee "$DEB.sha256"
 
       - name: Run transplant golden regression
@@ -85,13 +98,13 @@ jobs:
           fi
           python3 tests/transplant/test_golden.py --fixtures-dir tests/transplant/fixtures/tgz
 
-      - name: Upload opencode1 package and build evidence
+      - name: Upload opencode package and build evidence
         uses: actions/upload-artifact@v4
         with:
-          name: opencode1-${{ env.VERSION }}-android-aarch64
+          name: opencode-${{ env.VERSION }}-android-aarch64
           path: |
-            packing/dpkg-native/opencode1_${{ env.VERSION }}_aarch64.deb
-            packing/dpkg-native/opencode1_${{ env.VERSION }}_aarch64.deb.sha256
+            packing/dpkg-native/opencode_${{ env.VERSION }}_aarch64.deb
+            packing/dpkg-native/opencode_${{ env.VERSION }}_aarch64.deb.sha256
             artifacts/transplant/${{ env.VERSION }}/report.json
           if-no-files-found: error
           retention-days: 14

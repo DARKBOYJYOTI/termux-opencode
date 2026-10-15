@@ -1,17 +1,17 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# opencode1 launcher — dual-generation data isolation (v12.1).
+# opencode launcher — termux-opencode build (v1 runtime, plain `opencode` name).
 #
 # Why: the v1 runtime hardcodes the plain `opencode/` roots (live-fd verified;
 # OPENCODE_CONFIG_DIR and friends are enumerated but NOT consumed). The four
 # XDG_*_HOME exports re-root every path under an `opencode1/` isolation prefix;
 # the runtime then appends its own `opencode/` suffix, landing in the NESTED
 # layout migrate-to-opencode1.sh isolate maintains: <root>/opencode1/opencode/.
-# v2 keeps the plain roots untouched — the two generations never share a dir.
+# The `opencode1/` prefix is kept so existing user data survives the rename
+# from the legacy `opencode1` command — only the user-facing command changed.
 #
 # LD_LIBRARY_PATH covers DT_RUNPATH $ORIGIN/../lib/opencode after the runtime
-# moves under lib/opencode1/runtime/; compressed additionally ships its shim in
-# lib/opencode1/ — both roots are listed so every package layout resolves
-# (absent dirs are harmless: the dynamic linker just skips them).
+# moves under lib/opencode1/runtime/; both roots are listed so every package
+# layout resolves (absent dirs are harmless: the dynamic linker just skips them).
 set -euo pipefail
 P="${PREFIX:-/data/data/com.termux/files/usr}"
 # Keep GitHub CLI authentication reachable after isolating OpenCode's XDG paths.
@@ -19,7 +19,7 @@ export GH_CONFIG_DIR="${GH_CONFIG_DIR:-$HOME/.config/gh}"
 # Update-channel policy: packages from this repository are the only supported
 # upgrade path. Disable the official-channel update checks and notices by
 # default (upstream flag: OPENCODE_DISABLE_AUTOUPDATE, truthy = "1"/"true").
-# Explicit `opencode1 upgrade` still works; unset or set to 0 to re-enable.
+# Explicit `opencode upgrade` still works; unset or set to 0 to re-enable.
 export OPENCODE_DISABLE_AUTOUPDATE="${OPENCODE_DISABLE_AUTOUPDATE:-1}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/opencode1"
 export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/opencode1"
@@ -68,13 +68,53 @@ if [ -f "$P/lib/opencode1/libepoll-compat.so" ]; then
 	export LD_PRELOAD="$P/lib/opencode1/libepoll-compat.so${LD_PRELOAD:+:$LD_PRELOAD}"
 fi
 
-# runtime probe order: layered (native/compressed v12.1 layout) first, then the
-# wrapper line's original staged layout. Sibling Conflicts (opencode1 vs
-# opencode1-wrapper) guarantee at most one candidate exists per install.
+# This repository's release notice: once a day at most, cached, TTY-only, and
+# silent on any failure (offline, no curl, no release yet). Official-channel
+# checks stay off (see OPENCODE_DISABLE_AUTOUPDATE above); this is the only
+# update signal, and it points at this repository's releases.
+# Opt out: TERMUX_OPENCODE_UPDATE_CHECK=0.
+_termux_opencode_update_notice() {
+	[ "${TERMUX_OPENCODE_UPDATE_CHECK:-1}" = "1" ] || return 0
+	[ -t 1 ] || return 0
+	command -v curl >/dev/null 2>&1 || return 0
+	_installed="$(dpkg-query -W -f='${Version}' opencode 2>/dev/null || true)"
+	[ -n "$_installed" ] || return 0
+	_cache_dir="${XDG_CACHE_HOME}/opencode"
+	_cache_file="$_cache_dir/update-check.json"
+	_now="$(date +%s 2>/dev/null || echo 0)"
+	case "$_now" in ''|*[!0-9]*) return 0 ;; esac
+	_last=0; _latest=""
+	if [ -f "$_cache_file" ]; then
+		read -r _last _latest < "$_cache_file" 2>/dev/null || true
+	fi
+	case "$_last" in ''|*[!0-9]*) _last=0 ;; esac
+	if [ "$_now" -ge "$((_last + 86400))" ]; then
+		_tag="$(curl -fsSL --max-time 3 https://api.github.com/repos/DARKBOYJYOTI/termux-opencode/releases/latest 2>/dev/null | grep -m1 '"tag_name"' | sed 's/.*"tag_name": *"//;s/".*//' || true)"
+		case "$_tag" in
+			opencode-*) _latest="${_tag#opencode-}" ;;
+			*) _latest="" ;;
+		esac
+		if [ -n "$_latest" ]; then
+			mkdir -p "$_cache_dir" 2>/dev/null || true
+			printf '%s %s\n' "$_now" "$_latest" > "$_cache_file" 2>/dev/null || true
+		fi
+	fi
+	[ -n "$_latest" ] || return 0
+	[ "$_latest" = "$_installed" ] && return 0
+	_newest="$(printf '%s\n%s\n' "$_installed" "$_latest" | sort -V | tail -n1)"
+	if [ "$_newest" = "$_latest" ]; then
+		printf 'Update available: opencode %s (installed %s).\n' "$_latest" "$_installed" >&2
+		printf 'Get it: https://github.com/DARKBOYJYOTI/termux-opencode/releases (dpkg -i opencode_%s_aarch64.deb)\n' "$_latest" >&2
+	fi
+	return 0
+}
+_termux_opencode_update_notice
+
+# runtime probe order: packaged layout first, then the legacy staged layout.
 for _rt in "$P/lib/opencode1/runtime/opencode" "$P/lib/opencode/runtime/opencode"; do
 	if [ -x "$_rt" ]; then
 		exec "$_rt" "$@"
 	fi
 done
-echo "opencode1: runtime not found under $P/lib/opencode1/runtime or $P/lib/opencode/runtime" >&2
+echo "opencode: runtime not found under $P/lib/opencode1/runtime or $P/lib/opencode/runtime" >&2
 exit 127

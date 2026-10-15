@@ -36,6 +36,6 @@
 
 ## Supported versions
 
-Only the latest `opencode1` release published by this repository receives
+Only the latest `opencode` release published by this repository receives
 security fixes. Older upstream versions are rebuilt on request but not
 patched independently — upgrade to the current package.
