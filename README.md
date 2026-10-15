@@ -38,19 +38,34 @@ on install; user data is preserved.)
 
 ## Install
 
-1. Download the `opencode_<ver>_aarch64.deb` from the
-   [build workflow artifacts](https://github.com/DARKBOYJYOTI/termux-opencode/actions/workflows/build-opencode-native.yml)
-   of a successful run (or a GitHub Release, when published).
-2. Install and verify:
+One line — installs the latest release (checksum-verified, legacy
+`opencode1` replaced automatically, user data preserved):
 
 ```bash
-dpkg -i opencode_1.19.1_aarch64.deb
-opencode --version   # must print 1.19.1
+curl -fsSL https://raw.githubusercontent.com/DARKBOYJYOTI/termux-opencode/main/install.sh | bash
 ```
 
-3. Launch the TUI with `opencode`. Existing v1 data is migrated once,
-   non-destructively, into isolated `opencode1/` directories — kept as-is so
-   nothing is lost in the rename from the legacy `opencode1` command.
+Pin a version instead:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DARKBOYJYOTI/termux-opencode/main/install.sh | bash -s -- -v 1.19.1
+```
+
+Then verify and launch:
+
+```bash
+opencode --version   # must print the installed version
+opencode             # start the TUI
+```
+
+Existing v1 data is migrated once, non-destructively, into isolated
+`opencode1/` directories — kept as-is so nothing is lost in the rename from
+the legacy `opencode1` command.
+
+Manual alternative: download `opencode_<ver>_aarch64.deb` (+ `.sha256`) from
+[Releases](https://github.com/DARKBOYJYOTI/termux-opencode/releases) (or a
+[build workflow artifact](https://github.com/DARKBOYJYOTI/termux-opencode/actions/workflows/build-opencode-native.yml)),
+verify the checksum, and `dpkg -i` it.
 
 ### Upgrade / downgrade
 
