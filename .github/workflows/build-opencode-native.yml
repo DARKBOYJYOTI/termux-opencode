@@ -6,7 +6,7 @@ on:
       version:
         description: "Upstream v1 OpenCode version"
         required: true
-        default: "1.19.1"
+        default: "1.19.2"
         type: string
 
 permissions:
@@ -89,6 +89,8 @@ jobs:
           dpkg-deb --field "$DEB" Package Version Architecture
           dpkg-deb --contents "$DEB" | grep 'lib/opencode/libopencode-crhandler.so'
           dpkg-deb --contents "$DEB" | grep 'bin/opencode$'
+          dpkg-deb --contents "$DEB" | grep 'lib/opencode1/install.sh$'
+          dpkg-deb --contents "$DEB" | grep 'bin/migrate-to-opencode1.sh$'
           sha256sum "$DEB" | tee "$DEB.sha256"
 
       - name: Run transplant golden regression

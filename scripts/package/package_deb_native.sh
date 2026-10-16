@@ -204,36 +204,16 @@ if [ -f "$STALE" ] && command -v file >/dev/null 2>&1; then
   fi
 fi
 
-# v1 data-migration hook. The user-facing command is `opencode`, but v1 data
-# lives in the opencode1-isolated dirs (exactly once, never clobbering).
-# Requires scripts/migrate-to-opencode1.sh to be on PATH.
-CFG_DIR="$(printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/opencode")"
+# v1 data hook: the packaged runtime reads the OFFICIAL plain layout
+# (<root>/opencode). If legacy nested opencode1 data exists, move it back
+# (conflicting plain dirs are backed aside, never deleted).
 case "${PKG_NAME:-$DPKG_MAINTSCRIPT_PACKAGE}" in
   opencode)
     echo "OpenCode v1 (termux-opencode build) installed."
-    # Feature detection FIRST: `check` prints the detected state and
-    # exits 0 when every skip condition is met — only then does isolate run,
-    # and unsilenced so the operator sees detected-state and every action.
-    if { [ -e "$CFG_DIR" ] || [ -d "${CFG_DIR}1" ]; } && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
-      if migrate-to-opencode1.sh check; then
-        echo "Feature check: nothing to migrate — skipped (already isolated / no v1-era data / plugins clean)."
-      elif migrate-to-opencode1.sh isolate; then
-        echo "Migrated: v1 config now under opencode1/opencode (nested), plugins auto-patched (see detected-state above)."
-      else
-        echo "Migration not completed (see detected-state above); data left untouched."
-        # v2 guard may have blocked the plain->nested move. If v1-era leftovers
-        # still live at the plain roots, surface the explicit recovery path.
-        if { [ -f "${HOME}/.local/share/opencode/opencode.db" ] || [ -d "${XDG_CONFIG_HOME:-$HOME/.config}/opencode" ]; } \
-           && [ ! -e "${HOME}/.local/share/opencode1/opencode/opencode.db" ] \
-           && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
-          echo "NOTE: v1-era data still at the plain opencode/ roots and the opencode1"
-          echo "      nested roots are empty. If those plain dirs hold v1 leftovers you"
-          echo "      want opencode to see, run:  migrate-to-opencode1.sh isolate --take-plain"
-          echo "      (skipped automatically because a v2 opencode package is installed)."
-        fi
-      fi
+    if command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
+      migrate-to-opencode1.sh replain || echo "Data layout check reported issues — data left untouched (see above)."
     else
-      echo "No legacy v1 config found (or already isolated); nothing to migrate."
+      echo "Migration helper not on PATH; skipping data layout check."
     fi
     ;;
 esac

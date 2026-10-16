@@ -60,9 +60,12 @@ opencode --version   # must print the installed version
 opencode             # start the TUI
 ```
 
-Existing v1 data is migrated once, non-destructively, into isolated
-`opencode1/` directories — kept as-is so nothing is lost in the rename from
-the legacy `opencode1` command.
+Data lives in the official plain layout (`~/.config/opencode`,
+`~/.local/share/opencode`, …) — exactly like upstream, so every plugin, MCP
+setup, and script works unpatched. If legacy nested `opencode1/` data exists
+from older builds, it is moved back once, non-destructively (conflicting
+plain dirs are backed aside under `~/.local/share/opencode1-migrations`,
+never deleted).
 
 Manual alternative: download `opencode_<ver>_aarch64.deb` (+ `.sha256`) from
 [Releases](https://github.com/DARKBOYJYOTI/termux-opencode/releases) (or a
@@ -95,14 +98,29 @@ Get it: https://github.com/DARKBOYJYOTI/termux-opencode/releases (dpkg -i openco
 
 Opt out any time: `TERMUX_OPENCODE_UPDATE_CHECK=0`.
 
+### Uninstall
+
+```bash
+opencode uninstall              # remove the package, keep all user data
+opencode uninstall --dry-run    # show what would be removed, change nothing
+opencode uninstall --purge-data # also remove ~/.config/opencode,
+                                # ~/.local/share/opencode, ~/.cache/opencode,
+                                # ~/.local/state/opencode (asks first, --force skips)
+```
+
+Unlike upstream (which deletes data dirs by default), the default here never
+touches user data. Running processes are never killed automatically — if any
+are still alive you get their PIDs and stop them yourself.
+
 ## What's inside the package
 
 | Path | Purpose |
 | --- | --- |
-| `$PREFIX/bin/opencode` | Launcher: XDG isolation, service-port split, `GH_CONFIG_DIR` passthrough, official update checks off, repo release notice |
+| `$PREFIX/bin/opencode` | Launcher: `GH_CONFIG_DIR` passthrough, official update checks off, repo release notice, `upgrade`/`uninstall` routing |
 | `$PREFIX/lib/opencode1/runtime/opencode` | Hardened native Bionic runtime (`lib/opencode1` is an internal path kept for loader compatibility) |
 | `$PREFIX/lib/opencode/libopencode-crhandler.so` | Self-activating seccomp shim (`close_range` SIGSYS fix) |
-| `$PREFIX/bin/migrate-to-opencode1.sh` | One-time, idempotent v1 data migration helper |
+| `$PREFIX/lib/opencode1/install.sh` | Shipped installer serving `opencode upgrade` (repo releases only) |
+| `$PREFIX/bin/migrate-to-opencode1.sh` | Data layout helper (nested-to-plain move, backups, plugin unpatch) |
 
 Any v1 native package that lacks the `libopencode-crhandler.so` reference is
 rejected at packaging time — an unhardened binary cannot start on

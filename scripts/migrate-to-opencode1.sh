@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# migrate-to-opencode1.sh — v1 (opencode) → opencode1 data migration helper
+# migrate-to-opencode1.sh — v1 data layout helper (name is historical).
 #
-# The opencode1* packages are mutually exclusive with v2 `opencode` packages
-# (Breaks/Conflicts/Replaces). This script handles the DATA side of the rename:
+# The packaged `opencode` command uses the OFFICIAL plain layout
+# (<root>/opencode), exactly like upstream. This script handles the DATA side:
+#   replain  move NESTED <root>1/opencode data back to plain <root>/opencode
+#            (the package path; conflicting plain dirs are backed up aside,
+#            never deleted) + un-patch plugin path references
 #   backup   timestamped tarball of v1 data/config/cache/state
-#   isolate  move/reshape data into the NESTED opencode1 layout + auto-patch plugins
-#            (--take-plain: force-move plain dirs into nested even when a v2 opencode
-#             package is installed — use ONLY when the plain dirs hold v1-era leftovers
-#             and the nested opencode1 roots are still empty)
-#   check    dry-run feature detection: print detected state + what isolate
-#            would do; exit 0 = skip (nothing to do), 1 = isolate has work.
-#            Package hooks run this FIRST and only migrate when it exits 1.
+#   isolate  legacy: move/reshape data into the NESTED opencode1 layout
+#            (kept for manual use only — packages no longer isolate)
+#   check    dry-run feature detection for the legacy isolate path
 #   patch    re-run only the plugin path patch (after plugin updates)
 #   restore  restore the newest (or given) backup
 #   status   show which dirs exist and which mode fits your install
@@ -365,6 +364,133 @@ This script is idempotent; it never clobbers the nested target.
 CHECKLIST
 }
 
+# ── reverse plugin patch (nested -> plain) ───────────────────────────────
+# Inverse of patch_plugins: rewrites opencode1/opencode references back to the
+# official plain roots, idempotent (already-plain never matches).
+unpatch_plugins() {
+  local scan=() r
+  for r in "$CFG" "$CACHE"; do
+    [ -d "$r" ] && scan+=("$r")
+  done
+  if [ "${#scan[@]}" -eq 0 ]; then
+    note "plugin unpatch: no plain config/cache tree yet (nothing to do)"
+    return 0
+  fi
+  command -v python3 >/dev/null 2>&1 || { note "plugin unpatch: python3 missing, skipped"; return 0; }
+  local files
+  files="$(grep -rl --include='*.js' --include='*.mjs' --include='*.cjs' \
+              --include='*.ts' --include='*.json' \
+              -e 'opencode1/opencode' \
+              "${scan[@]}" 2>/dev/null || true)"
+  if [ -z "$files" ]; then
+    note "plugin unpatch: no nested references found (nothing to do)"
+    return 0
+  fi
+  python3 - "$files" <<'PY' || return 1
+import re, sys
+files = [f for f in sys.argv[1].split('\n') if f]
+RULES = [
+    # slash form: .config/opencode1/opencode -> .config/opencode
+    (re.compile(r'(?<![\w.])(\.config|\.local/share|\.cache|\.local/state)/opencode1/opencode(?![\w])'), r'\1/opencode'),
+    # path.join form: '.config', 'opencode1', 'opencode' -> '.config', 'opencode'
+    (re.compile(r"(['\"])\.config\1\s*,\s*(['\"])opencode1\2\s*,\s*(['\"])opencode\3"), r"\1.config\1, \1opencode\3"),
+    (re.compile(r"(['\"])\.local/share\1\s*,\s*(['\"])opencode1\2\s*,\s*(['\"])opencode\3"), r"\1.local/share\1, \1opencode\3"),
+    (re.compile(r"(['\"])\.cache\1\s*,\s*(['\"])opencode1\2\s*,\s*(['\"])opencode\3"), r"\1.cache\1, \1opencode\3"),
+    (re.compile(r"(['\"])\.local/state\1\s*,\s*(['\"])opencode1\2\s*,\s*(['\"])opencode\3"), r"\1.local/state\1, \1opencode\3"),
+]
+patched = 0
+changed_files = []
+for path in files:
+    try:
+        with open(path, 'r', encoding='utf-8', errors='strict') as f:
+            src = f.read()
+    except Exception:
+        continue
+    out, hits = src, 0
+    for rx, rep in RULES:
+        out, n = rx.subn(rep, out)
+        hits += n
+    if hits and out != src:
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(out)
+        patched += hits
+        changed_files.append(path)
+print(f"==> plugin unpatch: {patched} reference(s) in {len(changed_files)} file(s)")
+for p in changed_files:
+    print(f"    unpatched {p}")
+PY
+  # verification: no nested references may remain
+  local left
+  left="$(grep -rl --include='*.js' --include='*.mjs' --include='*.cjs' \
+            --include='*.ts' --include='*.json' \
+            -e 'opencode1/opencode' "${scan[@]}" 2>/dev/null || true)"
+  if [ -n "$left" ]; then
+    echo "    WARN: nested refs remain in:" >&2
+    echo "$left" | sed 's/^/      /' >&2
+    return 1
+  fi
+  note "plugin unpatch verified: 0 nested references remain"
+}
+
+# Move NESTED <root>1/opencode data back to plain <root>/opencode (the
+# official layout the packaged launcher reads). Conflict rule per root:
+#   nested missing            -> nothing to do for that root
+#   plain missing/empty       -> move nested in (rmdir leftovers)
+#   plain is our old shim symlink -> remove shim, move nested in
+#   plain has real content    -> back the plain dir aside under BACKUP_ROOT
+#                                (timestamped, never deleted), then move nested in
+# Refuses when a v2 opencode package owns the plain roots. Always exits 0 on
+# success (including complete no-op) so package hooks can call it directly.
+cmd_replain() {
+  if v2_installed; then
+    echo "Refusing: a v2 opencode package is installed — the plain roots belong to live v2." >&2
+    return 1
+  fi
+  local ts; ts="$(date +%Y%m%d-%H%M%S)"
+  local moved=0 root root1 nested
+  mkdir -p "$BACKUP_ROOT" 2>/dev/null || true
+  for root in "$CFG" "$DATA" "$CACHE" "$STATE"; do
+    root1="${root}1"
+    nested="$root1/opencode"
+    [ -d "$nested" ] || continue
+    # drop our own autopilot shim symlink first (its target rides in with the move)
+    if [ -h "$root/autopilot.db" ]; then
+      rm -f "$root/autopilot.db"
+      note "removed autopilot shim symlink at $root/autopilot.db"
+    fi
+    if [ ! -e "$root" ]; then
+      mkdir -p "$(dirname "$root")"
+      mv "$nested" "$root"
+      note "moved $nested -> $root"
+      moved=$((moved + 1))
+    elif [ -d "$root" ] && [ -z "$(ls -A "$root" 2>/dev/null)" ]; then
+      rmdir "$root"
+      mv "$nested" "$root"
+      note "moved $nested -> $root (plain was empty)"
+      moved=$((moved + 1))
+    else
+      local aside="$BACKUP_ROOT/plain-$(basename "$(dirname "$root")")-$(basename "$root")-$ts"
+      mv "$root" "$aside"
+      note "plain $root had content — backed aside to $aside"
+      mv "$nested" "$root"
+      note "moved $nested -> $root"
+      moved=$((moved + 1))
+    fi
+    rmdir "$root1" 2>/dev/null || true
+  done
+  if [ "$moved" -eq 0 ]; then
+    note "replain: nothing to move (already official-plain layout)"
+  fi
+  unpatch_plugins || return 1
+  cat <<'CHECKLIST'
+
+── data layout is now the official plain structure ──
+Runtime reads <root>/opencode directly (no launcher re-rooting).
+Conflicting plain dirs were backed aside, never deleted — see notes above.
+CHECKLIST
+  return 0
+}
+
 cmd_restore() {
   local arc="${1:-$(newest_backup)}"
   [ -n "$arc" ] || die "no backup found in $BACKUP_ROOT (pass a tarball path)"
@@ -396,6 +522,7 @@ main() {
         esac ;;
 
     patch)   patch_plugins ;;
+    replain) cmd_replain ;;
     restore) cmd_restore "${2:-}" ;;
     status)  cmd_status ;;
     -h|--help|help) usage 0 ;;
