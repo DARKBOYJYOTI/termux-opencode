@@ -138,11 +138,22 @@ ok "version: $VERSION"
 
 # Already there? Like `opencode upgrade` upstream: report and stop instead
 # of pointlessly reinstalling the same bits. `--reinstall` forces it.
+# Installed newer than target (e.g. testing an unreleased build) also stops
+# — pinning with -v still installs exactly what was asked... unless it is
+# equal (skip) or older-or-equal handling below applies.
 INSTALLED="$(dpkg-query -W -f='${Version}' opencode 2>/dev/null || true)"
 if [[ -n "$INSTALLED" && "$INSTALLED" == "$VERSION" && "$REINSTALL" != "1" ]]; then
 	ok "already on opencode $INSTALLED — nothing to do"
 	echo "  (run with --reinstall to force a reinstall)"
 	exit 0
+fi
+if [[ -n "$INSTALLED" && "$REINSTALL" != "1" ]]; then
+	_NEWEST="$(printf '%s\n%s\n' "$INSTALLED" "$VERSION" | sort -V | tail -n1)"
+	if [[ "$_NEWEST" == "$INSTALLED" ]]; then
+		ok "installed opencode $INSTALLED is newer than $VERSION — nothing to do"
+		echo "  (pin with -v <version>, or --reinstall to force)"
+		exit 0
+	fi
 fi
 
 DEB="opencode_${VERSION}_aarch64.deb"
