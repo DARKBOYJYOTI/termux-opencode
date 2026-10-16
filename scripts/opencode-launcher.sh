@@ -99,11 +99,16 @@ if [ "${1:-}" = "upgrade" ]; then
 		echo "opencode: upgrade handler missing ($P/lib/opencode1/install.sh not shipped)" >&2
 		exit 1
 	fi
-	case "${1:-}" in
-		-h|--help) exec bash "$_installer" --help < /dev/null ;;
-		"") exec bash "$_installer" < /dev/null ;;
-		*) exec bash "$_installer" -v "$1" < /dev/null ;;
-	esac
+	_args=()
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			-r|--reinstall) _args+=("$1"); shift ;;
+			-h|--help) exec bash "$_installer" --help < /dev/null ;;
+			-*) echo "opencode: unknown upgrade option: $1" >&2; exit 1 ;;
+			*) _args+=(-v "$1"); shift ;;
+		esac
+	done
+	exec bash "$_installer" "${_args[@]}" < /dev/null
 fi
 
 # `opencode uninstall` removes exactly what this repository installed — never

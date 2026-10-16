@@ -106,6 +106,10 @@ and stays up, no `libm.so.6` / SIGSYS errors.
   the official channel. It runs `pkg update`, ensures `curl` +
   `ca-certificates`, verifies SHA-256 (aborts on mismatch), removes legacy
   `opencode1` and the stale `hope2333-bootstrap` apt source, then installs.
+- Like upstream `upgrade`, it stops early with "already on … — nothing to
+  do" when the requested version is already installed; `--reinstall` forces
+  a reinstall. The launcher forwards `opencode upgrade [version]
+  [--reinstall]` accordingly (`-h` shows installer usage).
 
 ## 6. Naming and layout constraints (do not "clean up")
 
@@ -187,9 +191,11 @@ On-device acceptance for every release candidate:
    notice; when up to date (or offline), it stays silent.
 4. `opencode upgrade` (and `--help`) routes to our installer, never to the
    upstream flow.
-5. Reinstalls move zero user data: snapshot the data trees before/after
+5. Same-version upgrades skip without downloading (`--reinstall` forces);
+   pinned versions install exactly (up or down). Test all three paths.
+6. Reinstalls move zero user data: snapshot the data trees before/after
    (`find <dirs> | sort | diff`) and require an empty diff.
-6. `opencode uninstall --dry-run` prints the exact plan (official paths).
+7. `opencode uninstall --dry-run` prints the exact plan (official paths).
    Full purge is tested on a fake `HOME` only (`HOME=/tmp/x opencode
    uninstall --purge-data --force` — `dpkg -r` still runs for real, data
    removal stays fake), then the package is reinstalled and files re-synced.

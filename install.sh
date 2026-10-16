@@ -11,10 +11,12 @@
 #      (curl + ca-certificates — the runtime needs them for downloads and
 #      the daily release-update notice over HTTPS),
 #   2. resolves the version (explicit -v, else this repo's latest release),
-#   3. downloads opencode_<ver>_aarch64.deb + its SHA-256 file,
-#   4. verifies the checksum (aborts on mismatch),
-#   5. removes the legacy `opencode1` package if present (user data untouched),
-#   6. installs via dpkg and verifies `opencode --version`.
+#   3. stops early when that version is already installed (like upstream
+#      `upgrade`; `--reinstall` forces a reinstall),
+#   4. downloads opencode_<ver>_aarch64.deb + its SHA-256 file,
+#   5. verifies the checksum (aborts on mismatch),
+#   6. removes the legacy `opencode1` package if present (user data untouched),
+#   7. installs via dpkg and verifies `opencode --version`.
 #
 # It never touches your shell config, never adds aliases, and never contacts
 # the official OpenCode channel — releases come only from this repository.
@@ -63,17 +65,21 @@ success_box() {
 }
 
 usage() {
-	echo "Usage: install.sh [-v <version>]   (default: latest release)"
+	echo "Usage: install.sh [-v <version>] [-r|--reinstall]   (default: latest release)"
+	echo "  -v: install a pinned version instead of the latest release"
+	echo "  -r: reinstall even when the requested version is already installed"
 	echo "Example: install.sh -v 1.19.2"
 }
 
 VERSION=""
+REINSTALL=0
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 		-h|--help) usage; exit 0 ;;
 		-v|--version)
 			[[ -n "${2:-}" ]] || die "-v needs a version argument"
 			VERSION="$2"; shift 2 ;;
+		-r|--reinstall) REINSTALL=1; shift ;;
 		-*) die "unknown option $1" ;;
 		*) die "unexpected argument $1" ;;
 	esac
@@ -129,6 +135,15 @@ if [[ -z "$VERSION" ]]; then
 fi
 [[ "$VERSION" =~ ^1\.[0-9]+\.[0-9]+$ ]] || die "not a v1 version: $VERSION"
 ok "version: $VERSION"
+
+# Already there? Like `opencode upgrade` upstream: report and stop instead
+# of pointlessly reinstalling the same bits. `--reinstall` forces it.
+INSTALLED="$(dpkg-query -W -f='${Version}' opencode 2>/dev/null || true)"
+if [[ -n "$INSTALLED" && "$INSTALLED" == "$VERSION" && "$REINSTALL" != "1" ]]; then
+	ok "already on opencode $INSTALLED — nothing to do"
+	echo "  (run with --reinstall to force a reinstall)"
+	exit 0
+fi
 
 DEB="opencode_${VERSION}_aarch64.deb"
 BASE_URL="https://github.com/$REPO/releases/download/opencode-$VERSION"

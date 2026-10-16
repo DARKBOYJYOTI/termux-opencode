@@ -6,27 +6,31 @@
 [![Termux: AArch64](https://img.shields.io/badge/Termux-AArch64-1f6feb?style=flat-square)](https://termux.dev)
 [![Runtime: Bionic](https://img.shields.io/badge/Runtime-Bionic-9e6a03?style=flat-square)](#how-it-works)
 
-Native [OpenCode](https://opencode.ai) v1 (`opencode`) packages for **Termux on
-Android (AArch64)**. Pure Bionic runtime, zero glibc dependencies, full TUI —
-built reproducibly and verified on a real device.
+Native [OpenCode](https://opencode.ai) v1 (`opencode`) for **Termux on Android
+(AArch64)** — installed, updated, and uninstalled the way `opencode` users
+expect, but served entirely from this repository. Pure Bionic runtime, zero
+glibc dependencies, full TUI — built reproducibly and verified on real
+devices.
 
-The command is the plain `opencode` name, so every plugin, MCP setup, and
-script works without patching. (The legacy `opencode1` packages are replaced
-on install; user data is preserved.)
+The command is the plain `opencode` name and the data layout is the official
+plain structure (`~/.config/opencode`, `~/.local/share/opencode`, …), so
+every plugin, MCP setup, and script works without patching. (The legacy
+`opencode1` packages are replaced on install; user data is preserved.)
 
 > **Update-channel policy:** this repository is the only supported upgrade
-> path. Official-channel update checks and notices are disabled in the shipped
-> launcher (`OPENCODE_DISABLE_AUTOUPDATE=1`), and the launcher notifies you
-> about **this repository's releases** instead (see below). Never run the
-> official installer over these packages — install the next release from here.
+> path. Official-channel update checks and notices are disabled in the
+> shipped launcher (`OPENCODE_DISABLE_AUTOUPDATE=1`); instead you get our
+> releases through the familiar flow — a daily update notice, `opencode
+> upgrade`, and a one-line installer (see below). Never run the official
+> installer over these packages — install the next release from here.
 
 ## Status
 
 | Item | State |
 | --- | --- |
-| Current package | `opencode` **1.19.1** (`aarch64` `.deb`) |
+| Current package | `opencode` **1.19.2** (`aarch64` `.deb`) |
 | Runtime | Transplanted native Bionic ELF + `libopencode-crhandler.so` seccomp shim + Bionic `libopentui.so` |
-| Verified on | Termux on Android 12 (API 31), kernel 4.14 — `--version`, TUI startup |
+| Verified on | Termux on Android 12 (API 31), kernel 4.14 — install, `--version`, TUI, upgrade, uninstall |
 | CI | Manual-dispatch workflow builds, hardens, packages, and regression-tests every release |
 
 ## Requirements
@@ -50,7 +54,7 @@ curl -fsSL https://raw.githubusercontent.com/DARKBOYJYOTI/termux-opencode/main/i
 Pin a version instead:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DARKBOYJYOTI/termux-opencode/main/install.sh | bash -s -- -v 1.19.1
+curl -fsSL https://raw.githubusercontent.com/DARKBOYJYOTI/termux-opencode/main/install.sh | bash -s -- -v 1.19.2
 ```
 
 Then verify and launch:
@@ -74,26 +78,37 @@ verify the checksum, and `dpkg -i` it.
 
 ### Upgrade / downgrade
 
+Just like upstream, with our releases behind it:
+
+```bash
+opencode upgrade            # install the latest release (skips if already there)
+opencode upgrade 1.19.2     # install a pinned version (downgrades too)
+opencode upgrade --reinstall # force a reinstall of the same version
+```
+
+How it behaves: it checks this repository's releases, compares against the
+installed version, and stops with "already on … — nothing to do" when there
+is nothing newer — no pointless re-download. A pinned version installs
+exactly that (upgrade or downgrade alike). Everything is checksum-verified,
+and the upstream upgrade flow is never reached, so an official build can
+never overwrite this hardened runtime.
+
+Prefer `dpkg` directly? That works too:
+
 ```bash
 dpkg -i opencode_<new-ver>_aarch64.deb   # upgrade
 dpkg -i opencode_<old-ver>_aarch64.deb   # downgrade (same command)
 ```
 
-`opencode upgrade` is wired to this repository: it checks our releases and
-installs the matching `.deb` (checksum-verified), exactly like the installer.
-`opencode upgrade <version>` pins a version. The upstream upgrade flow is
-never reached, so an official build can never overwrite this hardened
-runtime.
-
 ### Update notifications (this repo's releases)
 
-Releases here are tagged `opencode-<ver>` (e.g. `opencode-1.19.1`). The
+Releases here are tagged `opencode-<ver>` (e.g. `opencode-1.19.2`). The
 launcher checks that feed — at most once a day (cached), only for interactive
 terminal sessions, and silently when offline:
 
 ```text
 Update available: opencode 1.19.2 (installed 1.19.1).
-Get it: https://github.com/DARKBOYJYOTI/termux-opencode/releases (dpkg -i opencode_1.19.2_aarch64.deb)
+Run: opencode upgrade  (or: https://github.com/DARKBOYJYOTI/termux-opencode/releases)
 ```
 
 Opt out any time: `TERMUX_OPENCODE_UPDATE_CHECK=0`.
