@@ -148,6 +148,12 @@ and stays up, no `libm.so.6` / SIGSYS errors.
   (`dpkg-query`, `sort`, `date`, `grep`, `sed` are base utilities).
 - Docs stay in English. Keep README (user surface) and this file (contributor
   surface) consistent when behavior changes.
+- Test discipline: this dev session often carries pre-isolated ambient
+  `XDG_*_HOME` vars. ALWAYS run app invocations under a clean environment
+  (`env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME -u
+  XDG_STATE_HOME …`) or the runtime writes to nested paths and the next
+  `replain` will adopt that junk over live plain data. Verify data paths
+  with live fds, and snapshot data trees before/after every install.
 
 ## 8. Anti-patterns (do not do these)
 
