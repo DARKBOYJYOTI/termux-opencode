@@ -127,6 +127,10 @@ Unlike upstream (which deletes data dirs by default), the default here never
 touches user data. Running processes are never killed automatically — if any
 are still alive you get their PIDs and stop them yourself.
 
+After uninstalling, your current shell may still remember the old command
+path — open a new terminal or run `hash -r`. Verify with
+`dpkg-query -W opencode` (expect "package 'opencode' is not installed").
+
 ## What's inside the package
 
 | Path | Purpose |
