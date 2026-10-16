@@ -63,7 +63,10 @@ _termux_opencode_update_notice() {
 	fi
 	case "$_last" in ''|*[!0-9]*) _last=0 ;; esac
 	if [ "$_now" -ge "$((_last + 86400))" ]; then
-		_tag="$(curl -fsSL --max-time 3 https://api.github.com/repos/DARKBOYJYOTI/termux-opencode/releases/latest 2>/dev/null | grep -m1 '"tag_name"' | sed 's/.*"tag_name": *"//;s/".*//' || true)"
+		# Read the whole body first: piping curl straight into `grep -m1`
+		# lets grep close the pipe early and kills curl with SIGPIPE.
+		_response="$(curl -fsSL --max-time 3 https://api.github.com/repos/DARKBOYJYOTI/termux-opencode/releases/latest 2>/dev/null)" || _response=""
+		_tag="$(printf '%s\n' "$_response" | grep -m1 '"tag_name"' | sed 's/.*"tag_name": *"//;s/".*//')" || _tag=""
 		case "$_tag" in
 			opencode-*) _latest="${_tag#opencode-}" ;;
 			*) _latest="" ;;
