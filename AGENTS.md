@@ -65,6 +65,10 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 - Publish only after on-device acceptance (section 3). To roll back, keep the
   previous release published and reinstall its `.deb` — user data lives in
   `$HOME` and survives package swaps.
+- To re-ship the same version (e.g. fixed packaging, same upstream binary):
+  rebuild via CI, verify the new artifact on-device with a before/after data
+  tree diff (section 9), then `gh release delete-asset` the old files and
+  upload the new ones. Never push a second tag for the same version.
 - New upstream minor/patch (same `@opentui/core`): dispatch the workflow with
   the new version. If `@opentui/core` changed, the vendored Bionic lib must
   be rebuilt and re-pinned first — do not ship a version whose TUI asset was
@@ -73,8 +77,8 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 ## 5. Update-channel policy (code-level)
 
 - The launcher exports `OPENCODE_DISABLE_AUTOUPDATE=1` by default (upstream
-  flag). Official-channel checks/notices stay off. Explicit
-  `opencode upgrade` still works but is unsupported (documented in README).
+  flag). Official-channel checks/notices stay off — the upstream `upgrade`
+  flow (including its "Install anyways?" prompt) is never reachable.
 - `opencode upgrade [version]` is intercepted by the launcher and served by
   the shipped `$PREFIX/lib/opencode1/install.sh` (packaged from repo root
   `install.sh`): it installs this repo's releases, never upstream's. All
@@ -111,6 +115,16 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 
 - Shell: `set -euo pipefail`, explicit `command -v` checks, actionable error
   messages on stderr with non-zero exit.
+- Pipe-safety: `install.sh` runs as `curl … | bash`, so **every** child
+  command that could read stdin (`pkg`, `dpkg`, `curl`, final verification)
+  gets `< /dev/null`, plus `DEBIAN_FRONTEND=noninteractive`. A tool that
+  eats the script stream makes the install stop halfway and resume cleanly
+  on re-run — which hides the bug. Always test the installer in real pipe
+  mode (`cat install.sh | bash -s -- -v <ver>`), never only as `bash
+  install.sh`.
+- Installer UI: `step` / `ok` / `warn` / `die` helpers, banner + success box,
+  colors only on a TTY and honoring `NO_COLOR`. No animations, no external
+  dependencies, no output that breaks `curl … | bash` piping.
 - Guards fail closed: a tripped check must stop the build/package, never be
   downgraded to a warning without a recorded reason.
 - Keep the launcher dependency-free beyond Termux base + `curl`
@@ -138,6 +152,7 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 bash scripts/fetch-fixtures.sh                  # once per clone (network)
 python3 tests/transplant/test_golden.py --fixtures-dir tests/transplant/fixtures/tgz
 bash -n install.sh scripts/opencode-launcher.sh scripts/package/package_deb_native.sh
+cat install.sh | bash -s -- -v <ver>             # real pipe-mode installer test
 ```
 
 On-device acceptance for every release candidate:
@@ -147,6 +162,10 @@ On-device acceptance for every release candidate:
    `Failed to initialize` errors.
 3. With a newer release published, an interactive launch prints the update
    notice; when up to date (or offline), it stays silent.
+4. `opencode upgrade` (and `--help`) routes to our installer, never to the
+   upstream flow.
+5. Reinstalls move zero user data: snapshot the data trees before/after
+   (`find <dirs> | sort | diff`) and require an empty diff.
 
 ## 10. Troubleshooting map
 
@@ -158,6 +177,7 @@ On-device acceptance for every release candidate:
 | Doubled data dirs (`opencode1/opencode1/...`) | Migration ran with pre-isolated ambient XDG vars | Delete only the doubled trees (live data is at single-nested paths); normalization (section 6) prevents recurrence |
 | No update notice though release is newer | Cache < 24 h, non-TTY, offline, or opted out | Wait / use a terminal / check network / `TERMUX_OPENCODE_UPDATE_CHECK` |
 | `dpkg --audit` complains | Stale third-party package state | `install.sh` cleans the known one; otherwise inspect before forcing |
+| Installer stops after the packages step, resumes fine on re-run | A child tool read stdin and ate the piped script stream | Give every child `< /dev/null` (section 7); re-test in pipe mode |
 
 ## 11. Credits and license
 
