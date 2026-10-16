@@ -197,7 +197,7 @@ On-device acceptance for every release candidate:
 | `Bad system call`, exit 159 | Unhardened binary (no shim) | Rebuild via section 3; never ship it |
 | `libm.so.6 not found` at TUI start | glibc `libopentui` in bundle (swap skipped) | Re-run the graft step; check slot fit |
 | `No command opencode1 found` for users | Stale `alias opencode="opencode1"` in `~/.bashrc` | Remove the alias line (installer adds none) |
-| Doubled data dirs (`opencode1/opencode1/...`) | Migration ran with pre-isolated ambient XDG vars | Delete only the doubled trees (live data is at single-nested paths); normalization (section 6) prevents recurrence |
+| Doubled data dirs (`opencode1/opencode1/...`) | Migration ran with pre-isolated ambient XDG vars | Delete only the doubled trees (live data is at plain paths); normalization (section 6) prevents recurrence |
 | Uninstaller kills the agent/user session | Auto-`pkill` on the runtime path matches the invoker too | Never auto-kill: warn with PIDs only (section 5) |
 | Reinstall re-nests data to `opencode1/` | Old postinst `isolate` path ran on upgrade | Postinst calls `replain` only; verify with before/after tree diff |
 | No update notice though release is newer | Cache < 24 h, non-TTY, offline, or opted out | Wait / use a terminal / check network / `TERMUX_OPENCODE_UPDATE_CHECK` |

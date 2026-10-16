@@ -91,6 +91,8 @@ jobs:
           dpkg-deb --contents "$DEB" | grep 'bin/opencode$'
           dpkg-deb --contents "$DEB" | grep 'lib/opencode1/install.sh$'
           dpkg-deb --contents "$DEB" | grep 'bin/migrate-to-opencode1.sh$'
+          dpkg-deb --ctrl-tarfile "$DEB" | tar -xO ./postinst | grep -q 'replain' \
+            || { echo "postinst does not call replain" >&2; exit 1; }
           sha256sum "$DEB" | tee "$DEB.sha256"
 
       - name: Run transplant golden regression
