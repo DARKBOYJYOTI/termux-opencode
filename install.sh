@@ -116,11 +116,12 @@ fi
 
 if [[ -z "$VERSION" ]]; then
 	step "Resolving latest release..."
-	# Read the whole body first: piping curl straight into `grep -m1` lets
-	# grep close the pipe early and kills curl with SIGPIPE (exit 23).
+	# Pure-bash extraction: piping curl into `grep -m1` lets grep close the
+	# pipe early and kills curl with SIGPIPE (exit 23) — a timing flake.
 	_release_json="$(curl -fsSL --max-time 15 "$API/latest")" \
 		|| die "could not reach the release feed ($API/latest)"
-	TAG="$(printf '%s\n' "$_release_json" | grep -m1 '"tag_name"' | sed 's/.*"tag_name": *"//;s/".*//')"
+	TAG="${_release_json#*\"tag_name\": \"}"
+	TAG="${TAG%%\"*}"
 	case "$TAG" in
 		opencode-*) VERSION="${TAG#opencode-}" ;;
 		*) die "unexpected latest tag: ${TAG:-<empty>}" ;;
