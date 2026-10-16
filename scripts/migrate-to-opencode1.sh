@@ -33,6 +33,14 @@
 
 set -euo pipefail
 
+# Normalize XDG roots: strip a trailing `/opencode1` so an already-isolated
+# environment cannot double-nest paths on re-runs (idempotent).
+_norm_root() { printf '%s' "${1%/opencode1}"; }
+XDG_CONFIG_HOME="$(_norm_root "${XDG_CONFIG_HOME:-$HOME/.config}")"
+XDG_DATA_HOME="$(_norm_root "${XDG_DATA_HOME:-$HOME/.local/share}")"
+XDG_CACHE_HOME="$(_norm_root "${XDG_CACHE_HOME:-$HOME/.cache}")"
+XDG_STATE_HOME="$(_norm_root "${XDG_STATE_HOME:-$HOME/.local/state}")"
+
 CFG="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/opencode"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/opencode"

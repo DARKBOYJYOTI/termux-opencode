@@ -75,6 +75,11 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 - The launcher exports `OPENCODE_DISABLE_AUTOUPDATE=1` by default (upstream
   flag). Official-channel checks/notices stay off. Explicit
   `opencode upgrade` still works but is unsupported (documented in README).
+- `opencode upgrade [version]` is intercepted by the launcher and served by
+  the shipped `$PREFIX/lib/opencode1/install.sh` (packaged from repo root
+  `install.sh`): it installs this repo's releases, never upstream's. All
+  other subcommands pass through to the runtime untouched. The packager
+  fails the build if `install.sh` is missing.
 - Our own notice lives in the launcher (`_termux_opencode_update_notice`):
   queries this repo's `releases/latest`, matches tag `opencode-*`, compares
   with `sort -V` against the installed `dpkg` version. Constraints, in order:
@@ -94,6 +99,10 @@ and stays up, no `libm.so.6` / SIGSYS errors.
   **intentional**: the binary's `DT_RUNPATH` (`$ORIGIN/../lib/opencode`) and
   existing user data depend on them. Renaming either breaks loading or
   orphans user data. The launcher header comment records why.
+- XDG roots are **normalized** (trailing `/opencode1` stripped before
+  appending) in the launcher and the migration helper, and postinst unsets
+  them outright: an already-isolated environment must never double-nest
+  paths. Never compute migration/install paths from raw ambient XDG vars.
 - `migrate-to-opencode1.sh` keeps its historical filename (postinst calls it).
 - Version inputs accept stable v1 only (`^1\.[0-9]+\.[0-9]+$`); 2.x is
   rejected by the workflow and the installer.
@@ -146,6 +155,7 @@ On-device acceptance for every release candidate:
 | `Bad system call`, exit 159 | Unhardened binary (no shim) | Rebuild via section 3; never ship it |
 | `libm.so.6 not found` at TUI start | glibc `libopentui` in bundle (swap skipped) | Re-run the graft step; check slot fit |
 | `No command opencode1 found` for users | Stale `alias opencode="opencode1"` in `~/.bashrc` | Remove the alias line (installer adds none) |
+| Doubled data dirs (`opencode1/opencode1/...`) | Migration ran with pre-isolated ambient XDG vars | Delete only the doubled trees (live data is at single-nested paths); normalization (section 6) prevents recurrence |
 | No update notice though release is newer | Cache < 24 h, non-TTY, offline, or opted out | Wait / use a terminal / check network / `TERMUX_OPENCODE_UPDATE_CHECK` |
 | `dpkg --audit` complains | Stale third-party package state | `install.sh` cleans the known one; otherwise inspect before forcing |
 

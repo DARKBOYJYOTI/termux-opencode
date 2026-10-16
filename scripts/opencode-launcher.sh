@@ -21,10 +21,13 @@ export GH_CONFIG_DIR="${GH_CONFIG_DIR:-$HOME/.config/gh}"
 # default (upstream flag: OPENCODE_DISABLE_AUTOUPDATE, truthy = "1"/"true").
 # Explicit `opencode upgrade` still works; unset or set to 0 to re-enable.
 export OPENCODE_DISABLE_AUTOUPDATE="${OPENCODE_DISABLE_AUTOUPDATE:-1}"
-export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/opencode1"
-export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/opencode1"
-export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}/opencode1"
-export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}/opencode1"
+# Normalize XDG roots first: strip a trailing `/opencode1` so an
+# already-isolated environment cannot double-nest paths (idempotent).
+_norm_root() { printf '%s' "${1%/opencode1}"; }
+export XDG_CONFIG_HOME="$(_norm_root "${XDG_CONFIG_HOME:-$HOME/.config}")/opencode1"
+export XDG_DATA_HOME="$(_norm_root "${XDG_DATA_HOME:-$HOME/.local/share}")/opencode1"
+export XDG_CACHE_HOME="$(_norm_root "${XDG_CACHE_HOME:-$HOME/.cache}")/opencode1"
+export XDG_STATE_HOME="$(_norm_root "${XDG_STATE_HOME:-$HOME/.local/state}")/opencode1"
 export LD_LIBRARY_PATH="$P/lib/opencode:$P/lib/opencode1:$P/lib/opencode1/pty${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 # service-port split (readiness fix, evidence: tools/opencode-readiness-fix/):
@@ -109,6 +112,24 @@ _termux_opencode_update_notice() {
 	return 0
 }
 _termux_opencode_update_notice
+
+# `opencode upgrade` serves this repository's releases — never the upstream
+# flow (which would overwrite this hardened runtime with an official build).
+# `opencode upgrade [version]` reuses the shipped installer; everything else
+# passes through to the runtime untouched.
+if [ "${1:-}" = "upgrade" ]; then
+	shift
+	_installer="$P/lib/opencode1/install.sh"
+	if [ ! -f "$_installer" ]; then
+		echo "opencode: upgrade handler missing ($P/lib/opencode1/install.sh not shipped)" >&2
+		exit 1
+	fi
+	case "${1:-}" in
+		-h|--help) exec bash "$_installer" --help < /dev/null ;;
+		"") exec bash "$_installer" < /dev/null ;;
+		*) exec bash "$_installer" -v "$1" < /dev/null ;;
+	esac
+fi
 
 # runtime probe order: packaged layout first, then the legacy staged layout.
 for _rt in "$P/lib/opencode1/runtime/opencode" "$P/lib/opencode/runtime/opencode"; do

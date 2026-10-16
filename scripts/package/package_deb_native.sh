@@ -111,6 +111,14 @@ if [[ "$VERSION" == 1.* ]]; then
 	install -m755 "$ROOT_DIR/scripts/migrate-to-opencode1.sh" "$DEB_ROOT$PREFIX/bin/migrate-to-opencode1.sh"
 	echo "Packaged migrate-to-opencode1.sh (v1 migration helper)"
 fi
+# The `opencode upgrade` subcommand is served by the launcher from the shipped
+# installer — it installs this repository's releases, never upstream's.
+if [[ "$VERSION" == 1.* ]]; then
+	[[ -f "$ROOT_DIR/install.sh" ]] || {
+		echo "Error: install.sh missing (upgrade handler source)" >&2; exit 1; }
+	install -D -m755 "$ROOT_DIR/install.sh" "$DEB_ROOT$PREFIX/lib/opencode1/install.sh"
+	echo "Packaged install.sh (opencode upgrade handler)"
+fi
 
 # W11: ship the self-activating seccomp shim when the binary references it
 # (DT_NEEDED libopencode-crhandler.so). It must land in $PREFIX/lib/opencode/
@@ -151,6 +159,10 @@ echo "Installed-Size: $INSTALLED_SIZE" >>"$DEB_ROOT/DEBIAN/control"
 cat >"$DEB_ROOT/DEBIAN/postinst" <<'POSTINST'
 #!/data/data/com.termux/files/usr/bin/bash
 set -e
+# Install-time hygiene: never inherit ambient XDG roots (a pre-isolated
+# environment would double-nest the migration paths). The migration helper
+# also normalizes them, but postinst must not depend on the caller at all.
+unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_STATE_HOME
 POSTINST
 # stale-serve-kill hook (issue #17): gated by the packaging hook registry —
 # default scope v2 native 2.0.[0-3] only; HOOKS_ENABLE / HOOKS_DISABLE override.

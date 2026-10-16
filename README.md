@@ -76,9 +76,11 @@ dpkg -i opencode_<new-ver>_aarch64.deb   # upgrade
 dpkg -i opencode_<old-ver>_aarch64.deb   # downgrade (same command)
 ```
 
-Explicit `opencode upgrade` still works, but it pulls from the official
-channel and is **not supported** here — it can replace this hardened runtime
-with an unpatched binary that crashes on older Android kernels.
+`opencode upgrade` is wired to this repository: it checks our releases and
+installs the matching `.deb` (checksum-verified), exactly like the installer.
+`opencode upgrade <version>` pins a version. The upstream upgrade flow is
+never reached, so an official build can never overwrite this hardened
+runtime.
 
 ### Update notifications (this repo's releases)
 
