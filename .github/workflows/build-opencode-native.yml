@@ -79,6 +79,19 @@ jobs:
             exit 1
           }
 
+      - name: Strip official update channel
+        run: |
+          set -euo pipefail
+          BIN="artifacts/transplant/$VERSION/opencode-native-tui"
+          test -x "$BIN"
+          python3 tools/transplant/strip_official_update.py "$BIN"
+          # Second run must be a no-op (idempotency gate).
+          python3 tools/transplant/strip_official_update.py "$BIN" >/dev/null
+          if grep -aqF 'OPENCODE_DISABLE_AUTOUPDATE:j(' "$BIN"; then
+            echo "official update channel still present in the runtime" >&2
+            exit 1
+          fi
+
       - name: Package only opencode
         run: |
           ARCH_DEB=aarch64 \

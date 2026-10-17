@@ -47,10 +47,17 @@ verified on a real device.
    patch it in as first `DT_NEEDED`:
    `clang -shared -fPIC -O2 -o <dir>/libopencode-crhandler.so tools/shim/sigsys_handler.c`
    then `python3 tools/transplant/crhandler_patch.py <tui-binary>`
-4. **Package** — `ARCH_DEB=aarch64 VERSION=<V> TRANSPLANT_ROOT=<dir>
+4. **Strip official update** — two same-length edits to the plaintext module
+   graph remove the official update channel structurally (flag default +
+   detection gate; both anchors must occur exactly once, else fail closed):
+   `python3 tools/transplant/strip_official_update.py <tui-binary>`
+   The packager refuses a runtime that still carries the
+   `OPENCODE_DISABLE_AUTOUPDATE:j(` anchor.
+5. **Package** — `ARCH_DEB=aarch64 VERSION=<V> TRANSPLANT_ROOT=<dir>
    bash ./scripts/package/package_deb_native.sh`
-   The packager **fails closed**: an unhardened v1 binary is refused, and the
-   shim must be present in the `.deb`.
+   The packager **fails closed**: an unhardened v1 binary is refused, a
+   runtime with the official update channel is refused, and the shim must be
+   present in the `.deb`.
 
 CI (`--no-execve`) produces the binary; **final acceptance is always on a
 real Termux device**: `opencode --version` prints the version, the TUI starts
@@ -76,9 +83,16 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 
 ## 5. Update-channel policy (code-level)
 
-- The launcher exports `OPENCODE_DISABLE_AUTOUPDATE=1` by default (upstream
-  flag). Official-channel checks/notices stay off — the upstream `upgrade`
-  flow (including its "Install anyways?" prompt) is never reachable.
+- The official update channel is removed at BUILD time
+  (`tools/transplant/strip_official_update.py`, section 3): two same-length
+  edits to the embedded module graph hardwire the `OPENCODE_DISABLE_AUTOUPDATE`
+  flag default to true and short-circuit the detection function, so no
+  official check, notice, `/update` command, or update dialog can exist even
+  if the environment is bypassed or the runtime is invoked directly. The
+  packager fails closed if the anchor is still present.
+- The launcher ALSO exports `OPENCODE_DISABLE_AUTOUPDATE=1` (belt and
+  suspenders). The upstream `upgrade` flow (including its "Install anyways?"
+  prompt) is never reachable.
 - `opencode upgrade [version]` is intercepted by the launcher and served by
   the shipped `$PREFIX/lib/opencode1/install.sh` (packaged from repo root
   `install.sh`): it installs this repo's releases, never upstream's. All
