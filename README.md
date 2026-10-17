@@ -11,9 +11,9 @@ users expect, served entirely from this repository. Pure Bionic runtime,
 full TUI, verified on real devices.
 
 > This repository is the only supported upgrade path. The official update
-> channel is stripped from the runtime at build time (no update checks,
-> notices, or dialogs); releases, notices, and upgrades all come from here.
-> Details: [wiki.md](./wiki.md).
+> channel is removed from the runtime at build time — no update checks, no
+> `/update` command, no notices, no update dialog. Releases, notices, and
+> upgrades all come from here. Details: [wiki.md](./wiki.md).
 
 ## Install
 

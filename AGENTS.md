@@ -47,12 +47,13 @@ verified on a real device.
    patch it in as first `DT_NEEDED`:
    `clang -shared -fPIC -O2 -o <dir>/libopencode-crhandler.so tools/shim/sigsys_handler.c`
    then `python3 tools/transplant/crhandler_patch.py <tui-binary>`
-4. **Strip official update** — two same-length edits to the plaintext module
-   graph remove the official update channel structurally (flag default +
-   detection gate; both anchors must occur exactly once, else fail closed):
+4. **Strip official update** — same-length edits to the plaintext module graph
+   remove the official update channel structurally (flag default, auto-check
+   gate, the `/update` palette entry, the `Installation.upgrade` guard, the
+   `POST /global/upgrade` route path, and the updater's version fetch). Every
+   anchor must occur exactly once, else fail closed:
    `python3 tools/transplant/strip_official_update.py <tui-binary>`
-   The packager refuses a runtime that still carries the
-   `OPENCODE_DISABLE_AUTOUPDATE:j(` anchor.
+   The packager refuses a runtime that still carries any stripped anchor.
 5. **Package** — `ARCH_DEB=aarch64 VERSION=<V> TRANSPLANT_ROOT=<dir>
    bash ./scripts/package/package_deb_native.sh`
    The packager **fails closed**: an unhardened v1 binary is refused, a
@@ -84,12 +85,18 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 ## 5. Update-channel policy (code-level)
 
 - The official update channel is removed at BUILD time
-  (`tools/transplant/strip_official_update.py`, section 3): two same-length
-  edits to the embedded module graph hardwire the `OPENCODE_DISABLE_AUTOUPDATE`
-  flag default to true and short-circuit the detection function, so no
-  official check, notice, `/update` command, or update dialog can exist even
-  if the environment is bypassed or the runtime is invoked directly. The
-  packager fails closed if the anchor is still present.
+  (`tools/transplant/strip_official_update.py`, section 3). Six same-length
+  edits to the embedded module graph: (1) hardwire the
+  `OPENCODE_DISABLE_AUTOUPDATE` flag default true; (2) short-circuit the auto
+  detection function; (3) make the TUI `/update` palette entry never register;
+  (4) force the `Installation.upgrade` guard true so any in-process official
+  install throws before touching the network/filesystem (covers the dialog's
+  `apply()`, the server route, and a direct `runtime/opencode upgrade`); (5)
+  point the `POST /global/upgrade` route at a non-existent path (404); (6) stop
+  the updater wrapper's version fetch. No official check, notice, `/update`
+  command, or update dialog can exist even if the environment is bypassed or
+  the runtime is invoked directly. The packager fails closed if any anchor is
+  still present.
 - The launcher ALSO exports `OPENCODE_DISABLE_AUTOUPDATE=1` (belt and
   suspenders). The upstream `upgrade` flow (including its "Install anyways?"
   prompt) is never reachable.

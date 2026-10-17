@@ -12,32 +12,47 @@ teardown() {
 	clean_tmpdir
 }
 
+# Build a synthetic "runtime" carrying every configured anchor, using the
+# module's own ANCHORS list so the test never drifts from the patcher.
+make_synthetic() {
+	python3 - "$SCRIPT" "$1" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("sou", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+body = b"\x7fELF\x02\x01\x01\x00" + bytes(range(256))
+body += b"".join(b"\x00" + old + b"\x00" for old, _ in mod.ANCHORS)
+body += b"\n---- Bun! ----\n"
+open(sys.argv[2], "wb").write(body)
+PY
+}
+
 @test "selftest passes" {
 	run python3 "$SCRIPT" --selftest
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"selftest OK"* ]]
 }
 
-@test "patches a synthetic runtime and is idempotent" {
+@test "strips every anchor and is idempotent" {
 	BIN="$TEST_TMPDIR/runtime"
-	python3 - "$BIN" <<'PY'
-import sys
-anchors = [
-    b'OPENCODE_DISABLE_AUTOUPDATE:j("OPENCODE_DISABLE_AUTOUPDATE")',
-    b'if(j.autoupdate===!1||K.OPENCODE_DISABLE_AUTOUPDATE)return;',
-]
-data = (
-    b"\x7fELF\x02\x01\x01\x00"
-    + b"".join(b"\x00" + a + b"\x00" for a in anchors)
-    + b"\n---- Bun! ----\n"
-)
-open(sys.argv[1], "wb").write(data)
-PY
+	make_synthetic "$BIN"
+
 	run python3 "$SCRIPT" "$BIN"
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"disabled"* ]]
-	run grep -aqF 'OPENCODE_DISABLE_AUTOUPDATE:j(' "$BIN"
-	[ "$status" -ne 0 ]
+
+	# No original anchor may survive; every patched marker must be present.
+	python3 - "$SCRIPT" "$BIN" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("sou", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+d = open(sys.argv[2], "rb").read()
+for old, new in mod.ANCHORS:
+    assert d.count(old) == 0, f"old anchor survived: {old!r}"
+    assert d.count(new) == 1, f"new marker missing: {new!r}"
+PY
+	[ "$?" -eq 0 ]
 
 	run python3 "$SCRIPT" "$BIN"
 	[ "$status" -eq 0 ]

@@ -70,12 +70,20 @@ if [[ "$VERSION" == 1.* ]] && ! grep -aqF libopencode-crhandler.so "$NATIVE_BIN"
 fi
 
 # Official update channel must be structurally absent: this repository's
-# releases are the only supported upgrade path (AGENTS.md section 5). Fail
-# closed if the build skipped the strip step.
-if [[ "$VERSION" == 1.* ]] && grep -aqF 'OPENCODE_DISABLE_AUTOUPDATE:j("OPENCODE_DISABLE_AUTOUPDATE")' "$NATIVE_BIN"; then
-	echo "Error: refusing to package a runtime with the official update channel present" >&2
-	echo "       run: python3 tools/transplant/strip_official_update.py $NATIVE_BIN" >&2
-	exit 1
+# releases are the only supported upgrade path (AGENTS.md section 5). Every
+# stripped anchor must be gone; fail closed if the build skipped the step.
+if [[ "$VERSION" == 1.* ]]; then
+	for _anchor in \
+		'OPENCODE_DISABLE_AUTOUPDATE:j(' \
+		'm.open?[{name:"opencode.update"' \
+		'upgrade:"/global/upgrade"'; do
+		if grep -aqF "$_anchor" "$NATIVE_BIN"; then
+			echo "Error: refusing to package a runtime with the official update channel present" >&2
+			echo "       anchor: $_anchor" >&2
+			echo "       run: python3 tools/transplant/strip_official_update.py $NATIVE_BIN" >&2
+			exit 1
+		fi
+	done
 fi
 
 # hook_enabled NAME DEFAULT-GLOB — packaging hook registry resolver (Makefile:

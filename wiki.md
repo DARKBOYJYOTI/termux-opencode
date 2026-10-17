@@ -61,9 +61,10 @@ opencode upgrade --reinstall # force a reinstall of the same version
 Behavior: resolves the target (explicit version, else our latest release),
 compares it with the installed version, and stops with "already on … —
 nothing to do" unless there is something newer (or `--reinstall` is given).
-Downloads are checksum-verified; the upstream upgrade flow is never reached,
-so an official build can never overwrite this hardened runtime. `dpkg -i`
-with a `.deb` works too.
+Downloads are checksum-verified. The runtime's own update channel is removed
+at build time (no `/update` command, no official check, and every in-process
+official install path is disabled), so an official build can never overwrite
+this hardened runtime. `dpkg -i` with a `.deb` works too.
 
 ## Uninstall
 
