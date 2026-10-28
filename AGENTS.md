@@ -96,7 +96,9 @@ and stays up, no `libm.so.6` / SIGSYS errors.
   the updater wrapper's version fetch. No official check, notice, `/update`
   command, or update dialog can exist even if the environment is bypassed or
   the runtime is invoked directly. The packager fails closed if any anchor is
-  still present.
+  still present. Anchors are grouped per known upstream build (minified
+  identifiers drift between releases); an unknown layout fails closed, so a
+  bump that renames identifiers needs a newly verified anchor set.
 - The launcher ALSO exports `OPENCODE_DISABLE_AUTOUPDATE=1` (belt and
   suspenders). The upstream `upgrade` flow (including its "Install anyways?"
   prompt) is never reachable.

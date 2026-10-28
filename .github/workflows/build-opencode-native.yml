@@ -6,7 +6,7 @@ on:
       version:
         description: "Upstream v1 OpenCode version"
         required: true
-        default: "1.19.2"
+        default: "1.19.5"
         type: string
 
 permissions:
@@ -87,19 +87,8 @@ jobs:
           python3 tools/transplant/strip_official_update.py "$BIN"
           # Second run must be a no-op (idempotency gate).
           python3 tools/transplant/strip_official_update.py "$BIN" >/dev/null
-          # Every original anchor must be gone (fail closed otherwise).
-          for anchor in \
-            'OPENCODE_DISABLE_AUTOUPDATE:j(' \
-            'if(j.autoupdate===!1||K.OPENCODE_DISABLE_AUTOUPDATE)return;' \
-            'm.open?[{name:"opencode.update"' \
-            'if($.default.valid(D)&&$.default.major(D)>=2)' \
-            'upgrade:"/global/upgrade"' \
-            'await E.latest(await E.method())'; do
-            if grep -aqF "$anchor" "$BIN"; then
-              echo "official update channel still present: $anchor" >&2
-              exit 1
-            fi
-          done
+          # Every known anchor set must show the channel structurally gone.
+          python3 tools/transplant/strip_official_update.py --verify "$BIN"
           # And the patched markers must be present.
           grep -aqF 'void 0?[{name:"opencode.update"' "$BIN"
           grep -aqF 'upgrade:"/global/upgradX"' "$BIN"
