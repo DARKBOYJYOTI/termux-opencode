@@ -80,12 +80,14 @@ jobs:
           git -C work/bun-src submodule update --init --recursive
           python3 tools/transplant/patch_bun_no_sve.py work/bun-src
           cd work/bun-src
+          GITHUB_SHA="$(git rev-parse HEAD)"
+          export GITHUB_SHA
           "$BUN_HOST" install --frozen-lockfile
           ANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
             "$BUN_HOST" scripts/build.ts \
               --profile=android-release \
               --android-ndk="$ANDROID_NDK_ROOT" \
-              --lto=off -j2
+              --canary=off --lto=off -j2
           test -x build/release/bun
 
           mkdir -p ../bun-cache/bun-1.4.4
