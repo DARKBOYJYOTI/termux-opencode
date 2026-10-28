@@ -56,6 +56,18 @@ jobs:
           set -euo pipefail
           ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/27.2.12479018"
           export ANDROID_NDK_ROOT
+          LLVM_VERSION=23.1.1
+          LLVM_SHA256=832aeb58d105de1cabc7b982dd2c65de0610f7377df48ae8fc2dd8e97420a15c
+          LLVM_ARCHIVE="$RUNNER_TEMP/LLVM-${LLVM_VERSION}-Linux-X64.tar.xz"
+          curl -fsSL -o "$LLVM_ARCHIVE" \
+            "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/LLVM-${LLVM_VERSION}-Linux-X64.tar.xz"
+          echo "$LLVM_SHA256  $LLVM_ARCHIVE" | sha256sum -c -
+          LLVM_DIR="$RUNNER_TEMP/llvm-${LLVM_VERSION}"
+          mkdir -p "$LLVM_DIR"
+          tar -xJf "$LLVM_ARCHIVE" --strip-components=1 -C "$LLVM_DIR"
+          test "$("$LLVM_DIR/bin/clang" --version | python3 -c 'import re,sys; print(re.search(r"\d+\.\d+\.\d+", sys.stdin.read()).group(0))')" = "$LLVM_VERSION"
+          export BUN_TOOLCHAIN_LLVM="$LLVM_DIR"
+
           BUN_HOST_VERSION=1.4.4
           BUN_HOST_SHA256=e0446eb55995772eb9894bebae9a6be368d985a8b9271ee124486f9946eedd76
           curl -fsSL -o "$RUNNER_TEMP/bun-host.zip" \
