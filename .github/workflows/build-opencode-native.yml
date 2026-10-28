@@ -44,6 +44,55 @@ jobs:
           sdkmanager --install "ndk;27.2.12479018"
           echo "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
 
+      - name: Check out Bun 1.4.4 source
+        uses: actions/checkout@v4
+        with:
+          repository: oven-sh/bun
+          ref: bun-v1.4.4
+          path: work/bun-src
+
+      - name: Build Android Bun base without SVE
+        run: |
+          set -euo pipefail
+          ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/27.2.12479018"
+          export ANDROID_NDK_ROOT
+          BUN_HOST_VERSION=1.4.4
+          BUN_HOST_SHA256=e0446eb55995772eb9894bebae9a6be368d985a8b9271ee124486f9946eedd76
+          curl -fsSL -o "$RUNNER_TEMP/bun-host.zip" \
+            "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_HOST_VERSION}/bun-linux-x64-baseline.zip"
+          echo "$BUN_HOST_SHA256  $RUNNER_TEMP/bun-host.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/bun-host.zip" -d "$RUNNER_TEMP/bun-host"
+          BUN_HOST="$RUNNER_TEMP/bun-host/bun-linux-x64-baseline/bun"
+          test "$("$BUN_HOST" --version)" = "$BUN_HOST_VERSION"
+
+          git -C work/bun-src submodule update --init --recursive
+          python3 tools/transplant/patch_bun_no_sve.py work/bun-src
+          cd work/bun-src
+          "$BUN_HOST" install --frozen-lockfile
+          ANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
+            "$BUN_HOST" scripts/build.ts \
+              --profile=android-release \
+              --android-ndk="$ANDROID_NDK_ROOT" \
+              --lto=off -j2
+          test -x build/android-release/bun
+
+          mkdir -p ../bun-cache/bun-1.4.4
+          cp build/android-release/bun ../bun-cache/bun-1.4.4/bun
+          chmod 755 ../bun-cache/bun-1.4.4/bun
+          echo "BUN_BASE_CACHE=$GITHUB_WORKSPACE/work/bun-cache" >> "$GITHUB_ENV"
+          python3 - "$GITHUB_WORKSPACE/work/bun-cache/bun-1.4.4/bun" <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path(os.environ["GITHUB_WORKSPACE"]) / "tools/transplant"))
+          from probe_assemble import bun_version_from_elf
+          path = Path(sys.argv[1])
+          version = bun_version_from_elf(path)
+          if version != "1.4.4":
+              raise SystemExit(f"source-built Bun base version mismatch: {version!r}")
+          print(f"source-built Android Bun base verified: {version} ({path.stat().st_size} bytes)")
+          PY
+
       - name: Download upstream AArch64 package
         run: |
           mkdir -p work
@@ -54,7 +103,8 @@ jobs:
 
       - name: Transplant into Android/Bionic runtime
         run: |
-          python3 tools/transplant/transplant.py all --ver "$VERSION" --tgz "$TGZ" --no-execve
+          python3 tools/transplant/transplant.py all \
+            --ver "$VERSION" --tgz "$TGZ" --bun-cache "$BUN_BASE_CACHE" --no-execve
           test -x "artifacts/transplant/$VERSION/opencode-native-revived"
 
       - name: Graft Bionic TUI library
