@@ -12,8 +12,10 @@ Strategy: zero-displacement surgical dynamic-section edit.
      DT_NEEDED == libc.so, DT_DEBUG + DT_HASH + DT_GNU_HASH + trailing
      DT_NULL present).
   2. Write the shim-name, libc-name and runpath strings into zero padding
-     inside the first R-E PT_LOAD that is covered by no section (linker only
-     reads DT_STRTAB bytes; padding is dead space).
+     inside any PT_LOAD that is covered by no section (linker only reads
+     DT_STRTAB bytes; padding is dead space). Newer Bun bases (1.4.4) have no
+     large enough run left in the first R-E LOAD, so the search spans every
+     file-backed LOAD and remembers the containing segment for the vaddr.
   3. Reorder DT_NEEDED so the shim is FIRST in the chain (head of bionic's
      symbol lookup order -> the shim's exported syscall()/close_range()
      interpose the main ELF's PLT sites, which is what rescues the
@@ -27,6 +29,7 @@ Strategy: zero-displacement surgical dynamic-section edit.
      and a full byte-compare against the original allowing ONLY the padding
      region and the four repurposed dynamic entries to differ.
 """
+import re
 import struct
 import sys
 from typing import NoReturn
@@ -139,42 +142,62 @@ def main() -> None:
         die(f"first DT_NEEDED is {first_needed_name!r}, expected {LIBC_NAME!r}; "
             "shape drifted beyond this patcher")
 
-    # Find zero padding inside the first R-E LOAD covered by no section.
-    exec_load = None
-    for p in phdrs:
-        if p[0] == PT_LOAD and (p[1] & PF_X):
-            exec_load = p
-            break
-    if exec_load is None:
-        die("no R-E PT_LOAD found")
-    e_off, e_va, e_filesz = exec_load[2], exec_load[3], exec_load[5]
-    covered = [(s[3], s[4], s[5]) for s in load_shdrs(orig, ehdr) if s[4] or s[5]]
-    runs, run_start = [], None
-    for pos in range(e_off, e_off + e_filesz):
-        zero = orig[pos] == 0 and not any(a <= pos < a + sz for a, _, sz in covered)
-        if zero and run_start is None:
-            run_start = pos
-        elif not zero and run_start is not None:
-            runs.append((run_start, pos - run_start))
-            run_start = None
-    if run_start is not None:
-        runs.append((run_start, e_off + e_filesz - run_start))
+    # Find sectionless zero padding inside a file-backed PT_LOAD. Newer Bun
+    # bases (1.4.4) have no large enough run left in the R-E LOAD, so scan all
+    # base LOADs. Never write past the base's section-header table: the graft
+    # appends the module graph there and those zeros are live payload.
+    covered = sorted((s[3], s[3] + s[5]) for s in load_shdrs(orig, ehdr) if s[5])
+    base_end = len(orig)
+    if ehdr[6] and ehdr[12]:
+        candidate_end = ehdr[6] + ehdr[12] * ehdr[11]
+        if candidate_end <= len(orig):
+            base_end = candidate_end
     shim_bytes = SHIM_NAME.encode() + b"\0"
     libc_bytes = LIBC_NAME.encode() + b"\0"
     rpath_bytes = RUNPATH.encode() + b"\0"
     need_total = len(shim_bytes) + len(libc_bytes) + len(rpath_bytes)
-    run = next((r for r in runs if r[1] >= need_total + 8), None)
-    if run is None:
-        die(f"no sectionless zero run >= {need_total + 8}B inside the R-E LOAD")
-    str_shim = (run[0] + 7) & ~7  # 8-align for tidiness
+    min_run = need_total + 8
+    best = None  # (length, file offset, containing PT_LOAD)
+    zero_run = re.compile(rb"\x00{%d,}" % min_run)
+    for p in phdrs:
+        if p[0] != PT_LOAD or p[5] == 0:
+            continue
+        p_off, p_va, p_filesz = p[2], p[3], p[5]
+        scan_end = min(p_off + p_filesz, base_end)
+        if scan_end <= p_off:
+            continue
+        view = memoryview(orig)[p_off:scan_end]
+        for m in zero_run.finditer(view):
+            a, b = p_off + m.start(), p_off + m.end()
+            cur = a
+            for ca, cb in covered:
+                if cb <= cur:
+                    continue
+                if ca >= b:
+                    break
+                if ca > cur:
+                    n = min(ca, b) - cur
+                    if n >= min_run and (best is None or n > best[0]):
+                        best = (n, cur, p)
+                cur = max(cur, cb)
+                if cur >= b:
+                    break
+            if cur < b:
+                n = b - cur
+                if n >= min_run and (best is None or n > best[0]):
+                    best = (n, cur, p)
+    if best is None:
+        die(f"no sectionless zero run >= {min_run}B inside a file-backed PT_LOAD")
+    run_len, run_start, run_load = best
+    e_off, e_va = run_load[2], run_load[3]
+    str_shim = (run_start + 7) & ~7  # 8-align for tidiness
     str_libc = str_shim + len(shim_bytes)
     str_rpath = str_libc + len(libc_bytes)
     str_end = str_rpath + len(rpath_bytes)
     print(f"crhandler_patch: strings @file {str_shim:#x}..{str_end:#x} "
-          f"(zero run {run[0]:#x}+{run[1]}B)")
+          f"(zero run {run_start:#x}+{run_len}B in LOAD @{e_off:#x})")
 
-    # File offset -> vaddr inside the containing LOAD (strings live in the
-    # R-E LOAD whose mapping is congruent for this binary shape).
+    # File offset -> vaddr inside the containing LOAD.
     str_shim_va = str_shim - e_off + e_va
     str_libc_va = str_libc - e_off + e_va
     str_rpath_va = str_rpath - e_off + e_va
