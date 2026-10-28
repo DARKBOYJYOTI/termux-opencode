@@ -86,10 +86,10 @@ jobs:
               --profile=android-release \
               --android-ndk="$ANDROID_NDK_ROOT" \
               --lto=off -j2
-          test -x build/android-release/bun
+          test -x build/release/bun
 
           mkdir -p ../bun-cache/bun-1.4.4
-          cp build/android-release/bun ../bun-cache/bun-1.4.4/bun
+          cp build/release/bun ../bun-cache/bun-1.4.4/bun
           chmod 755 ../bun-cache/bun-1.4.4/bun
           echo "BUN_BASE_CACHE=$GITHUB_WORKSPACE/work/bun-cache" >> "$GITHUB_ENV"
           python3 - "$GITHUB_WORKSPACE/work/bun-cache/bun-1.4.4/bun" <<'PY'
