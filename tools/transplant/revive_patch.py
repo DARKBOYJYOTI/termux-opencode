@@ -242,7 +242,17 @@ def main() -> None:
     else:
         blob = struct.pack("<Q", len(payload)) + payload
     out = bytearray(bun_bytes)
-    out.extend(b"\x00" * (new_off - len(bun_bytes)))
+    # The RW LOAD's filesz is about to cover the whole .bss vaddr range, so any
+    # non-zero bytes already at those FILE offsets (the base's .symtab/.strtab
+    # tail, which sits past the old filesz end) would be mapped as .bss and
+    # corrupt zero-initialized C++ statics (e.g. __cxa_guard deadlock). Zero the
+    # tail from the end of the real LOAD file data up to the appended blob.
+    zero_from = load["offset"] + old_filesz
+    if zero_from < len(out):
+        out[zero_from:] = b"\x00" * (len(out) - zero_from)
+    out.extend(b"\x00" * (new_off - len(out)))
+    if zero_from < new_off and any(out[zero_from:new_off]):
+        fail(f"zero-fill gap [{zero_from:#x},{new_off:#x}) is not all zeros")
     out.extend(blob)
 
     append_end = new_off + len(blob)           # identity mapping: vaddr == file offset
