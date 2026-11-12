@@ -34,6 +34,12 @@ jobs:
           sha256sum -c assets/bionic-libopentui-0.4.5.so.sha256
           bash tools/transplant/build-libopentui.sh --check assets/bionic-libopentui-0.4.5.so
 
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Install Android NDK r27c
         uses: android-actions/setup-android@v3
         with:
