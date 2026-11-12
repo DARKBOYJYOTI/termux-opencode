@@ -127,6 +127,32 @@ jobs:
             --ver "$VERSION" --tgz "$TGZ" --bun-cache "$BUN_BASE_CACHE" --no-execve
           test -x "artifacts/transplant/$VERSION/opencode-native-revived"
 
+      - name: Dump ELF layout of Bun base (diagnostic)
+        run: |
+          BASE="work/bun-cache/bun-1.4.4/bun"
+          {
+            echo "=== readelf -hW base ==="
+            readelf -hW "$BASE" 2>&1 || true
+            echo "=== readelf -lW base ==="
+            readelf -lW "$BASE" 2>&1 || true
+            echo "=== readelf -SW base ==="
+            readelf -SW "$BASE" 2>&1 || true
+            echo "=== readelf -lW revived ==="
+            readelf -lW "artifacts/transplant/$VERSION/opencode-native-revived" 2>&1 || true
+          } | tee diag-layout.txt
+          ls -l "$BASE" "artifacts/transplant/$VERSION/opencode-native-revived"
+
+      - name: Upload Bun base and revived for on-device diagnosis
+        uses: actions/upload-artifact@v4
+        with:
+          name: diag-bun-base-revived
+          path: |
+            work/bun-cache/bun-1.4.4/bun
+            artifacts/transplant/${{ inputs.version }}/opencode-native-revived
+            diag-layout.txt
+          if-no-files-found: error
+          retention-days: 3
+
       - name: Graft Bionic TUI library
         run: |
           python3 tools/transplant/swap_tui.py \
