@@ -6,7 +6,7 @@ on:
       version:
         description: "Upstream v1 OpenCode version"
         required: true
-        default: "1.19.5"
+        default: "1.19.6"
         type: string
 
 permissions:

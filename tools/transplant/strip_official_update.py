@@ -92,6 +92,8 @@ ANCHOR_SETS = [
         ],
     ),
     (
+        # 1.19.6 reuses this set: all six anchor sites are byte-identical
+        # after minification (verified against the 1.19.6 module graph).
         "1.19.5",
         [
             (
