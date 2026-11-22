@@ -155,10 +155,16 @@ mkdir -p "$CRT"
 
 if [[ -n "$NDK_SYSROOT" ]]; then
   say "== preparing NDK sysroot pieces ($NDK_SYSROOT)"
-  MERGE="$NDK_SYSROOT/usr/include"
+  # NDK keeps arch-specific headers (asm/, bits/) in the per-arch include dir,
+  # while bionic headers include <asm/...> directly. Merge both, like the
+  # Termux recipe does, so zig's translate-c and C compiles see one tree.
+  NDK_INC="$NDK_SYSROOT/usr/include"
+  mkdir -p "$MERGE"
+  for f in "$NDK_INC"/*; do ln -sfn "$f" "$MERGE/$(basename "$f")"; done
+  for f in "$NDK_INC"/aarch64-linux-android/*; do ln -sfn "$f" "$MERGE/$(basename "$f")"; done
   NDK_LIB_DIR="$NDK_SYSROOT/usr/lib/aarch64-linux-android/$ANDROID_API"
   [[ -d "$NDK_LIB_DIR" ]] || NDK_LIB_DIR="$NDK_SYSROOT/usr/lib/aarch64-linux-android"
-  [[ -e "$MERGE/asm/auxvec.h" ]] || die "NDK headers missing asm/auxvec.h"
+  [[ -e "$MERGE/asm/auxvec.h" ]] || die "merged NDK headers missing asm/auxvec.h"
   [[ -f "$NDK_LIB_DIR/libc.so" ]] || die "NDK stub libraries missing in $NDK_LIB_DIR"
   for l in libc.so libm.so libdl.so; do ln -sfn "$NDK_LIB_DIR/$l" "$CRT/$l"; done
   ln -sfn libc.so "$CRT/libpthread.so"
