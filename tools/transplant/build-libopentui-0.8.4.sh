@@ -207,14 +207,18 @@ EOF
 # three translations here (where --libc is available) and let build.zig import
 # them via -Dbionic-translate-dir.
 TRANSLATE_DIR="$WORKDIR/translate"
+EMPTY_SYSROOT="$WORKDIR/empty-sysroot"
 rm -rf "$TRANSLATE_DIR"
-mkdir -p "$TRANSLATE_DIR"
+mkdir -p "$TRANSLATE_DIR" "$EMPTY_SYSROOT"
 say "== translating C headers with --libc (host-independent)"
 (
   cd "$NATIVE"
   export ZIG_GLOBAL_CACHE_DIR="$WORKDIR/zig-cache"
   tc() {
-    "$ZIG_BIN" translate-c --libc "$LIBC_TXT" -target "aarch64-linux-android.$ANDROID_API" \
+    # --sysroot keeps the host's autodetected /usr/include out of the search
+    # path (it would point into the empty dir); bionic comes from -isystem.
+    "$ZIG_BIN" translate-c --libc "$LIBC_TXT" --sysroot "$EMPTY_SYSROOT" \
+      -target "aarch64-linux-android.$ANDROID_API" \
       -O ReleaseSafe -isystem "$MERGE" -I src \
       -D__ANDROID_API__="$ANDROID_API" -D__ANDROID_MIN_SDK_VERSION__="$ANDROID_API" "$@"
   }
