@@ -85,7 +85,7 @@ and stays up, no `libm.so.6` / SIGSYS errors.
   `lib/opencode2/runtime/opencode` directly bypasses the launcher and is
   unsupported.
 - `opencode upgrade [version]` is intercepted by the launcher and served by
-  the shipped `$PREFIX/lib/opencode1/install.sh` (packaged from repo root
+  the shipped `$PREFIX/lib/opencode2/install.sh` (packaged from repo root
   `install.sh`): it installs this repo's releases, never upstream's. All
   other subcommands pass through to the runtime untouched. The packager
   fails the build if `install.sh` is missing.
@@ -122,9 +122,10 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 - Data layout is the **official plain structure** (`<root>/opencode`), exactly
   like upstream — the launcher sets no XDG re-rooting. Verify with live fds
   (`ls -l /proc/<runtime-pid>/fd`), never declarations.
-- `lib/opencode1/` (runtime dir) is an **internal detail kept for loader
-  compatibility**: the binary's `DT_RUNPATH` (`$ORIGIN/../lib/opencode`)
-  resolves through it. Do not rename it without re-hardening the binary.
+- `lib/opencode2/` is an **internal install path** (runtime, installer, data
+  migrations); user-facing names stay `opencode`. The v2 runtime links only
+  bionic system libraries and carries no `DT_RUNPATH`/`DT_RPATH`, so nothing
+  resolves through this directory at load time.
 - The launcher injects the v1-parity default `Tab` -> `agent.cycle`
   (`OPENCODE_CLI_CONFIG_CONTENT`) only when the user's
   `cli.json`/`cli.jsonc` has no `agent.cycle` binding and they did not set

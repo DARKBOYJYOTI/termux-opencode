@@ -15,8 +15,9 @@ RT="$P/lib/opencode2/runtime/opencode"
 export GH_CONFIG_DIR="${GH_CONFIG_DIR:-$HOME/.config/gh}"
 # Update-channel policy: packages from this repository are the only supported
 # upgrade path. Disable the official-channel update checks and notices by
-# default (upstream flag: OPENCODE_DISABLE_AUTOUPDATE, truthy = "1"/"true";
-# the packaged binary also has the channel structurally stripped).
+# default (upstream flag: OPENCODE_DISABLE_AUTOUPDATE, truthy = "1"/"true");
+# upgrade/update/uninstall subcommands are intercepted below and served by
+# this repository's installer).
 export OPENCODE_DISABLE_AUTOUPDATE="${OPENCODE_DISABLE_AUTOUPDATE:-1}"
 # v1 builds needed these for their DT_RUNPATH/shim and seccomp handler; the v2
 # runtime links only bionic system libraries and embeds its TUI library, so
