@@ -201,6 +201,31 @@ cc_dir=$CC_DIR
 darwin_sdk_dir=
 EOF
 
+# --- pre-generate translate-c output ------------------------------------------
+# zig's Build.TranslateC step has no --libc: on a glibc host it silently falls
+# back to /usr/include and bionic headers fail on __GLIBC_USE. Generate the
+# three translations here (where --libc is available) and let build.zig import
+# them via -Dbionic-translate-dir.
+TRANSLATE_DIR="$WORKDIR/translate"
+rm -rf "$TRANSLATE_DIR"
+mkdir -p "$TRANSLATE_DIR"
+say "== translating C headers with --libc (host-independent)"
+(
+  cd "$NATIVE"
+  export ZIG_GLOBAL_CACHE_DIR="$WORKDIR/zig-cache"
+  tc() {
+    "$ZIG_BIN" translate-c --libc "$LIBC_TXT" -target "aarch64-linux-android.$ANDROID_API" \
+      -O ReleaseSafe -isystem "$MERGE" -I src \
+      -D__ANDROID_API__="$ANDROID_API" -D__ANDROID_MIN_SDK_VERSION__="$ANDROID_API" "$@"
+  }
+  tc src/vendor/miniaudio/miniaudio.h >"$TRANSLATE_DIR/miniaudio.zig"
+  tc -I zig-deps/yoga src/yoga-bridge.h >"$TRANSLATE_DIR/yoga.zig"
+  tc include/opentui.h >"$TRANSLATE_DIR/context.zig"
+)
+for f in miniaudio yoga context; do
+  [[ -s "$TRANSLATE_DIR/$f.zig" ]] || die "translate-c produced no $f.zig"
+done
+
 # --- build ---------------------------------------------------------------------
 say "== building libopentui.so for aarch64-linux-android$ANDROID_API"
 PRELOAD=()
@@ -216,7 +241,7 @@ fi
     -Dbionic-libdir="$CRT" \
     -Dbionic-include="$MERGE" \
     -Dbionic-api="$ANDROID_API" \
-    -Dbionic-builtin-include="$(dirname "$ZIG_BIN")/lib/include" \
+    -Dbionic-translate-dir="$TRANSLATE_DIR" \
     --libc "$LIBC_TXT"
 )
 

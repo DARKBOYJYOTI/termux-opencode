@@ -9,14 +9,15 @@
 #
 # Contents:
 #   packages/native/build.zig
-#     - -Dbionic-libdir / -Dbionic-include / -Dbionic-api /
-#       -Dbionic-builtin-include cross-build switches (system lib dir, merged
-#       bionic headers, API macros, zig builtin headers).
-#     - translate-c steps (miniaudio, yoga, context ABI) get the bionic
-#       headers and API macros; on non-bionic hosts -nostdinc stops translate-c
-#       from falling back to the host glibc sysroot (which then fails on
-#       __GLIBC_USE). The main module links libc on android.
-#     - android-untag.c is compiled into the library.
+#     - -Dbionic-libdir / -Dbionic-include / -Dbionic-api cross-build switches
+#       (system lib dir, merged bionic headers, API macros).
+#     - -Dbionic-translate-dir imports pre-generated translate-c output. zig's
+#       Build.TranslateC has no --libc, so on a glibc host it falls back to
+#       /usr/include and bionic headers fail on __GLIBC_USE; the build script
+#       runs `zig translate-c --libc` itself and this switch imports the files.
+#       Without it the three addTranslateC steps run as upstream does.
+#     - The main module links libc on android; translate-c steps get the API
+#       macros. android-untag.c is compiled into the library.
 #   packages/native/src/android-untag.c (new)
 #     - constructor that calls mallopt(M_BIONIC_SET_HEAP_TAGGING_LEVEL, NONE)
 #       so scudo returns canonical (<= 2^53) heap pointers to JS.
@@ -30,7 +31,7 @@
 diff --git a/packages/native/build.zig b/packages/native/build.zig
 --- a/packages/native/build.zig
 +++ b/packages/native/build.zig
-@@ -366,6 +366,13 @@
+@@ -366,6 +366,15 @@
  
  // Set by -Drequire-video. Release builds pass it so a missing FFmpeg prefix fails instead of shipping without video.
  var require_video = false;
@@ -38,13 +39,15 @@ diff --git a/packages/native/build.zig b/packages/native/build.zig
 +var bionic_libdir: ?[]const u8 = null;
 +var bionic_include: ?[]const u8 = null;
 +var bionic_api: ?[]const u8 = null;
-+// zig/clang builtin headers (lib/include); required with -nostdinc on
-+// non-bionic hosts so translate-c cannot fall back to a glibc sysroot.
-+var bionic_builtin_include: ?[]const u8 = null;
++// Directory with pre-generated translate-c output (miniaudio.zig, yoga.zig,
++// context.zig). Translate-c steps cannot take --libc, so on a non-bionic host
++// zig falls back to /usr/include and bionic headers break; the build script
++// generates these with --libc instead and this switch imports them.
++var bionic_translate_dir: ?[]const u8 = null;
  var video_unavailable_warned: std.StringHashMapUnmanaged(void) = .empty;
  
  // Names the FFmpeg prefix that scripts/build-ffmpeg.ts builds for this target, if any.
-@@ -451,6 +458,26 @@
+@@ -451,6 +460,26 @@
      switch (target.result.os.tag) {
          .macos => addMacOSSystemLibraries(b, module, macos_sdk_path.?),
          .linux => {
@@ -71,62 +74,62 @@ diff --git a/packages/native/build.zig b/packages/native/build.zig
              module.linkSystemLibrary("dl", .{});
              module.linkSystemLibrary("pthread", .{});
              module.linkSystemLibrary("m", .{});
-@@ -502,6 +529,15 @@
+@@ -496,12 +525,23 @@
+     optimize: std.lang.Optimize,
+     target: std.Build.ResolvedTarget,
+ ) void {
++    if (bionic_translate_dir) |dir| {
++        module.addAnonymousImport("miniaudio", .{ .root_source_file = .{ .cwd_relative = b.fmt("{s}/miniaudio.zig", .{dir}) } });
++        module.addAnonymousImport("yoga", .{ .root_source_file = .{ .cwd_relative = b.fmt("{s}/yoga.zig", .{dir}) } });
++        module.addAnonymousImport("context_abi_c", .{ .root_source_file = .{ .cwd_relative = b.fmt("{s}/context.zig", .{dir}) } });
++        return;
++    }
+     const miniaudio_translate = b.addTranslateC(.{
+         .root_source_file = b.path("src/vendor/miniaudio/miniaudio.h"),
+         .target = target,
          .optimize = optimize,
      });
      miniaudio_translate.addIncludePath(b.path("src"));
 +    if (bionic_include) |inc| miniaudio_translate.addSystemIncludePath(.{ .cwd_relative = inc });
-+    if (bionic_builtin_include) |inc| miniaudio_translate.addSystemIncludePath(.{ .cwd_relative = inc });
-+    if (bionic_api) |api| {
-+        miniaudio_translate.addCFlags(&.{
-+            "-nostdinc",
-+            b.fmt("-D__ANDROID_API__={s}", .{api}),
-+            b.fmt("-D__ANDROID_MIN_SDK_VERSION__={s}", .{api}),
-+        });
-+    }
++    if (bionic_api) |api| miniaudio_translate.addCFlags(&.{
++        b.fmt("-D__ANDROID_API__={s}", .{api}),
++        b.fmt("-D__ANDROID_MIN_SDK_VERSION__={s}", .{api}),
++    });
      module.addImport("miniaudio", miniaudio_translate.createModule());
  
      const yoga_dep = b.dependency("yoga", .{});
-@@ -511,6 +547,15 @@
+@@ -511,6 +551,11 @@
          .optimize = optimize,
      });
      yoga_translate.addIncludePath(yoga_dep.path(""));
 +    if (bionic_include) |inc| yoga_translate.addSystemIncludePath(.{ .cwd_relative = inc });
-+    if (bionic_builtin_include) |inc| yoga_translate.addSystemIncludePath(.{ .cwd_relative = inc });
-+    if (bionic_api) |api| {
-+        yoga_translate.addCFlags(&.{
-+            "-nostdinc",
-+            b.fmt("-D__ANDROID_API__={s}", .{api}),
-+            b.fmt("-D__ANDROID_MIN_SDK_VERSION__={s}", .{api}),
-+        });
-+    }
++    if (bionic_api) |api| yoga_translate.addCFlags(&.{
++        b.fmt("-D__ANDROID_API__={s}", .{api}),
++        b.fmt("-D__ANDROID_MIN_SDK_VERSION__={s}", .{api}),
++    });
      module.addImport("yoga", yoga_translate.createModule());
      addContextABIHeader(b, module, optimize, target);
  }
-@@ -526,6 +571,15 @@
+@@ -526,6 +571,11 @@
          .target = target,
          .optimize = optimize,
      });
 +    if (bionic_include) |inc| header.addSystemIncludePath(.{ .cwd_relative = inc });
-+    if (bionic_builtin_include) |inc| header.addSystemIncludePath(.{ .cwd_relative = inc });
-+    if (bionic_api) |api| {
-+        header.addCFlags(&.{
-+            "-nostdinc",
-+            b.fmt("-D__ANDROID_API__={s}", .{api}),
-+            b.fmt("-D__ANDROID_MIN_SDK_VERSION__={s}", .{api}),
-+        });
-+    }
++    if (bionic_api) |api| header.addCFlags(&.{
++        b.fmt("-D__ANDROID_API__={s}", .{api}),
++        b.fmt("-D__ANDROID_MIN_SDK_VERSION__={s}", .{api}),
++    });
      module.addImport("context_abi_c", header.createModule());
  }
  
-@@ -631,6 +685,10 @@
+@@ -631,6 +681,10 @@
      const build_all = b.option(bool, "all", "Build for all supported targets") orelse false;
      const gpa_safe_stats = b.option(bool, "gpa-safe-stats", "Enable GPA safety checks for trustworthy allocator stats") orelse false;
      require_video = b.option(bool, "require-video", "Fail when a target's FFmpeg prefix is missing instead of building without video") orelse false;
 +    bionic_libdir = b.option([]const u8, "bionic-libdir", "Bionic shared-library dir (Android builds)");
 +    bionic_include = b.option([]const u8, "bionic-include", "Merged bionic header dir (Android builds)");
 +    bionic_api = b.option([]const u8, "bionic-api", "Android API level for __ANDROID_API__ (Android builds)");
-+    bionic_builtin_include = b.option([]const u8, "bionic-builtin-include", "zig builtin header dir for -nostdinc translate-c (Android builds)");
++    bionic_translate_dir = b.option([]const u8, "bionic-translate-dir", "Pre-generated translate-c output dir (Android builds)");
      const macos_sdk_path = resolveMacOSSDKPath(b);
      const build_options = b.addOptions();
      build_options.addOption(bool, "gpa_safe_stats", gpa_safe_stats);
