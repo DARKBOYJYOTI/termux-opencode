@@ -216,6 +216,7 @@ fi
     -Dbionic-libdir="$CRT" \
     -Dbionic-include="$MERGE" \
     -Dbionic-api="$ANDROID_API" \
+    -Dbionic-builtin-include="$(dirname "$ZIG_BIN")/lib/include" \
     --libc "$LIBC_TXT"
 )
 
