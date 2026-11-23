@@ -28,6 +28,24 @@ unset LD_PRELOAD LD_LIBRARY_PATH 2>/dev/null || true
 	exit 127
 }
 
+# Default keybind parity with v1: Tab cycles the agent (plan/build). v2
+# upstream binds agent.cycle to shift+tab; CLI settings merge, so inject the
+# default through OPENCODE_CLI_CONFIG_CONTENT unless the user already chose an
+# agent.cycle binding (cli.json/cli.jsonc) or set their own CLI config content.
+_cli_dir="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
+_cli_has_agent_cycle=0
+for _f in "$_cli_dir/cli.json" "$_cli_dir/cli.jsonc"; do
+	[ -f "$_f" ] || continue
+	if grep -q '"agent\.cycle"' "$_f" 2>/dev/null; then
+		_cli_has_agent_cycle=1
+		break
+	fi
+done
+if [ -z "${OPENCODE_CLI_CONFIG_CONTENT:-}" ] && [ "$_cli_has_agent_cycle" = "0" ]; then
+	export OPENCODE_CLI_CONFIG_CONTENT='{"keybinds":{"agent.cycle":"tab"}}'
+fi
+unset _cli_dir _cli_has_agent_cycle _f
+
 # This repository's release notice: once a day at most, cached, TTY-only, and
 # silent on any failure (offline, no curl, no release yet). Official-channel
 # checks stay off (see OPENCODE_DISABLE_AUTOUPDATE above); this is the only

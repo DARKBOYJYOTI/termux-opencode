@@ -136,6 +136,10 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 - `lib/opencode1/` (runtime dir) is an **internal detail kept for loader
   compatibility**: the binary's `DT_RUNPATH` (`$ORIGIN/../lib/opencode`)
   resolves through it. Do not rename it without re-hardening the binary.
+- The launcher injects the v1-parity default `Tab` -> `agent.cycle`
+  (`OPENCODE_CLI_CONFIG_CONTENT`) only when the user's
+  `cli.json`/`cli.jsonc` has no `agent.cycle` binding and they did not set
+  that variable themselves. CLI settings merge, so user keybinds survive.
 - The launcher computes purge/notice paths from the ambient XDG roots
   verbatim (official plain layout, `<root>/opencode`); packaging never moves
   or deletes user data. v2 reads the same roots the v1 packages used.

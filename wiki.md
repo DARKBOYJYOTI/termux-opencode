@@ -117,6 +117,11 @@ back once, non-destructively (conflicting plain dirs are backed aside under
 | `$PREFIX/lib/opencode2/runtime/opencode` | Native Bionic v2 runtime (`lib/opencode2` is an internal path) |
 | `$PREFIX/lib/opencode2/install.sh` | Installer serving `opencode upgrade` |
 
+`Tab` cycles the agent (plan/build). The launcher injects this default through
+`OPENCODE_CLI_CONFIG_CONTENT` unless `cli.json` already configures
+`keybinds.agent.cycle` (or you set that variable yourself); CLI settings merge,
+so other keybindings are untouched.
+
 Any package whose runtime still carries the official update channel is refused
 at packaging time.
 
