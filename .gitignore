@@ -9,7 +9,6 @@ packing/dpkg-native/
 
 # Downloaded fixtures and vendored test runners (fetched on demand)
 tests/vendor/
-tests/transplant/fixtures/
 
 # Python bytecode
 __pycache__/

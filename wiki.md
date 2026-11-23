@@ -114,26 +114,22 @@ back once, non-destructively (conflicting plain dirs are backed aside under
 | Path | Purpose |
 | --- | --- |
 | `$PREFIX/bin/opencode` | Launcher (update checks off, repo notice, `upgrade`/`uninstall` routing) |
-| `$PREFIX/lib/opencode1/runtime/opencode` | Hardened native Bionic runtime (`lib/opencode1` is an internal loader path) |
-| `$PREFIX/lib/opencode/libopencode-crhandler.so` | Self-activating seccomp shim (`close_range` fix) |
-| `$PREFIX/lib/opencode1/install.sh` | Installer serving `opencode upgrade` |
-| `$PREFIX/bin/migrate-to-opencode1.sh` | Data layout helper |
+| `$PREFIX/lib/opencode2/runtime/opencode` | Native Bionic v2 runtime (`lib/opencode2` is an internal path) |
+| `$PREFIX/lib/opencode2/install.sh` | Installer serving `opencode upgrade` |
 
 Any package whose runtime still carries the official update channel is refused
-at packaging time — an unhardened binary cannot start on seccomp-filtered
-Android kernels.
+at packaging time.
 
 ## How it works
 
 1. The official `opencode-linux-arm64` release tarball provides the
    JavaScript module graph (byte-identical upstream input).
 2. The transplant pipeline grafts it onto the pinned Android Bun base.
-3. The vendored, guard-verified Bionic `libopentui.so`
-   (`built by tools/transplant/build-libopentui-0.8.4.sh`, guard-verified) replaces the
-   glibc-linked TUI library, and a zero-displacement patch links the
-   self-activating seccomp shim as the first `DT_NEEDED` entry.
-4. The result is packaged as `opencode`, with the shim asserted — the build
-   fails closed instead of shipping a binary that crashes.
+3. The guard-verified Bionic `libopentui.so`
+   (built by `tools/transplant/build-libopentui-0.8.4.sh`) replaces the
+   glibc-linked TUI library.
+4. The official update channel is stripped structurally and the result is
+   packaged as `opencode`; packaging fails closed on an unstripped runtime.
 
 Final runtime acceptance always happens on a real Termux device.
 
@@ -141,21 +137,19 @@ Final runtime acceptance always happens on a real Termux device.
 
 Via CI (recommended): `Actions → Build opencode native Android package →
 Run workflow` with input `version`. It downloads the upstream tarball,
-transplants, grafts, hardens, packages **only** `opencode`, runs the golden
-regression, and uploads the `.deb` + SHA-256 + build report.
+transplants, grafts, strips the update channel, packages **only**
+`opencode`, and uploads the `.deb` + SHA-256 + build report.
 
 On-device (Termux, AArch64), with `<ver>` being the target version:
 
 ```bash
-npm pack 'opencode-linux-arm64@<ver>' --pack-destination "$TMPDIR"
-python3 tools/transplant/transplant.py all --ver <ver> --tgz "$TMPDIR/opencode-linux-arm64-<ver>.tgz"
+npm pack "@opencode/cli-linux-arm64@<ver>" --pack-destination "$TMPDIR"
+python3 tools/transplant/transplant.py all --ver <ver> --tgz "$TMPDIR/opencode-cli-linux-arm64-<ver>.tgz"
 python3 tools/transplant/swap_tui.py \
   --binary artifacts/transplant/<ver>/opencode-native-revived \
   --tui-lib artifacts/transplant/opentui-0.8.4/libopentui.so \
   --out artifacts/transplant/<ver>/opencode-native-tui
-clang -shared -fPIC -O2 \
-  -o artifacts/transplant/<ver>/libopencode-crhandler.so tools/shim/sigsys_handler.c
-python3 tools/transplant/crhandler_patch.py artifacts/transplant/<ver>/opencode-native-tui
+python3 tools/transplant/strip_official_update.py artifacts/transplant/<ver>/opencode-native-tui
 ARCH_DEB=aarch64 VERSION=<ver> TRANSPLANT_ROOT="$PWD/artifacts/transplant" \
   bash ./scripts/package/package_deb_native.sh
 dpkg -i packing/dpkg-native/opencode_<ver>_aarch64.deb

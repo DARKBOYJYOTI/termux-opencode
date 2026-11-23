@@ -23,16 +23,11 @@ dependencies, full TUI (libopentui 0.8.4 built in CI). Single branch
 | `install.sh` | One-line user installer (repo releases only, checksum-verified) |
 | `scripts/opencode-launcher.sh` | Shipped launcher — source of `$PREFIX/bin/opencode`; routes `upgrade`/`uninstall`, never re-roots XDG |
 | `scripts/package/package_deb_native.sh` | Native `.deb` packager; verifies the stripped update channel |
-| `scripts/migrate-to-opencode1.sh` | Legacy v1 helper (no longer shipped by v2 packages) |
 | `scripts/common.sh` | Shared shell helpers (unit-tested) |
-| `scripts/fetch-fixtures.sh` | Downloads golden-fixture tarballs (never commit the tarballs) |
 | `tools/transplant/` | Transplant + revive + harden pipeline (stdlib-only Python) |
-| `tools/shim/sigsys_handler.c` | Legacy v1 seccomp handler source (v2 needs no shim) |
-| `tools/build-bionic/` | Bionic platform patch helpers |
-| `assets/bionic-libopentui-0.4.5.so` | Legacy v1 TUI lib (unused by v2) |
 | `patches/opentui/android-bionic-0.8.4.patch` | 0.8.4 bionic build + FFI guard patches |
 | `tools/transplant/build-libopentui-0.8.4.sh` | Reproducible bionic libopentui 0.8.4 build |
-| `tests/` | Shell unit tests + transplant golden regression |
+| `tests/` | Shell unit tests (bats) |
 | `.github/workflows/build-opencode-native.yml` | Manual-dispatch CI build (v2 only) |
 | `.github/workflows/tests.yml` | Shell unit tests on push/PR |
 
@@ -41,21 +36,19 @@ dependencies, full TUI (libopentui 0.8.4 built in CI). Single branch
 1. **Transplant** — graft the official module graph onto the pinned Android
    Bun base:
    `python3 tools/transplant/transplant.py all --ver <V> --tgz <tgz>`
-2. **TUI graft** — swap the glibc `libopentui` inside the binary for the
-   vendored Bionic one (slot must fit; swap fails loudly otherwise):
-   `python3 tools/transplant/swap_tui.py --binary <revived> --tui-lib assets/bionic-libopentui-0.4.5.so --out <tui>`
-3. **Harden** — compile the shim with the NDK clang and zero-displacement
-   patch it in as first `DT_NEEDED`:
-   `clang -shared -fPIC -O2 -o <dir>/libopencode-crhandler.so tools/shim/sigsys_handler.c`
-   then `python3 tools/transplant/crhandler_patch.py <tui-binary>`
-4. **Strip official update** — same-length edits to the plaintext module graph
-   remove the official update channel structurally (flag default, auto-check
-   gate, the `/update` palette entry, the `Installation.upgrade` guard, the
-   `POST /global/upgrade` route path, and the updater's version fetch). Every
-   anchor must occur exactly once, else fail closed:
+2. **TUI graft** — build the bionic libopentui 0.8.4
+   (`tools/transplant/build-libopentui-0.8.4.sh`) and swap the glibc
+   libopentui inside the binary for it (slot must fit; swap fails loudly):
+   `python3 tools/transplant/swap_tui.py --binary <revived> --tui-lib artifacts/transplant/opentui-0.8.4/libopentui.so --out <tui>`
+3. **Strip official update** — same-length edits to the plaintext module graph
+   remove the official update channel structurally (anchor set `2.3.2`: the
+   autoupdate gate is forced off and the palette `opencode.update` command is
+   removed; the CLI `upgrade` subcommand stays, but the launcher serves it
+   from this repository). Every anchor must occur exactly once, else fail
+   closed:
    `python3 tools/transplant/strip_official_update.py <tui-binary>`
    The packager refuses a runtime that still carries any stripped anchor.
-5. **Package** — `ARCH_DEB=aarch64 VERSION=<V> TRANSPLANT_ROOT=<dir>
+4. **Package** — `ARCH_DEB=aarch64 VERSION=<V> TRANSPLANT_ROOT=<dir>
    bash ./scripts/package/package_deb_native.sh`
    The packager **fails closed**: a runtime with the official update channel
    (anchor set `2.3.2`) is refused. v2 needs no seccomp shim.
@@ -143,15 +136,9 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 - `lib/opencode1/` (runtime dir) is an **internal detail kept for loader
   compatibility**: the binary's `DT_RUNPATH` (`$ORIGIN/../lib/opencode`)
   resolves through it. Do not rename it without re-hardening the binary.
-- XDG roots are still **normalized** (trailing `/opencode1` stripped) in the
-  launcher's self-computed paths, the migration helper, and postinst unsets
-  them outright: an already-isolated environment must never double-nest
-  paths. Never compute migration/install/purge paths from raw ambient XDG
-  vars.
-- Legacy nested `opencode1/` data is moved back by `replain` (backup-on-
-  conflict, never delete). The old `isolate` direction is retired from
-  packaging; postinst calls `replain` only.
-- `migrate-to-opencode1.sh` keeps its historical filename (postinst calls it).
+- The launcher computes purge/notice paths from the ambient XDG roots
+  verbatim (official plain layout, `<root>/opencode`); packaging never moves
+  or deletes user data. v2 reads the same roots the v1 packages used.
 - Version inputs accept stable v2 only (`^2\.[0-9]+\.[0-9]+$`); 1.x is
   rejected by the workflow and the installer.
 
@@ -184,9 +171,9 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 
 ## 8. Anti-patterns (do not do these)
 
-- Do not weaken or skip the shim/graft assertions to "make the build pass".
+- Do not weaken or skip the graft/update-strip assertions to "make the build pass".
 - Do not commit generated outputs: `artifacts/`, `*.deb`, `*.tgz`,
-  `tests/vendor/`, `tests/transplant/fixtures/`, `__pycache__/` (all ignored).
+  `tests/vendor/`, `__pycache__/` (all ignored).
 - Do not commit tokens, keys, `.env` files, `hosts.yml` contents, or
   device-specific absolute paths. CI permissions stay minimal; no scheduled
   triggers that pull or publish without human review.
@@ -199,8 +186,7 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 
 ```bash
 ./tests/run.sh                                   # shell unit tests (must pass)
-bash scripts/fetch-fixtures.sh                  # once per clone (network)
-python3 tests/transplant/test_golden.py --fixtures-dir tests/transplant/fixtures/tgz
+python3 tools/transplant/strip_official_update.py --selftest
 bash -n install.sh scripts/opencode-launcher.sh scripts/package/package_deb_native.sh
 cat install.sh | bash -s -- -v <ver>             # real pipe-mode installer test
 ```
