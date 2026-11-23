@@ -2,7 +2,7 @@ name: Build opencode native Android package
 
 # Native mainline: OpenCode v2 (2.x) transplanted from the upstream glibc Bun
 # standalone into an Android/Bionic runtime, with the bionic libopentui.so
-# built here (real TUI), the official update channel stripped, and the plain
+# built here (real TUI), the official update channel disabled by the launcher, and the plain
 # `opencode` Debian package produced.
 
 on:
