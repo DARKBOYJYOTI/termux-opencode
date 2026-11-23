@@ -208,8 +208,13 @@ EOF
 # them via -Dbionic-translate-dir.
 TRANSLATE_DIR="$WORKDIR/translate"
 EMPTY_SYSROOT="$WORKDIR/empty-sysroot"
-rm -rf "$TRANSLATE_DIR"
-mkdir -p "$TRANSLATE_DIR" "$EMPTY_SYSROOT"
+INCLUDE_NEXT_SHIM="$WORKDIR/include-next-shim"
+rm -rf "$TRANSLATE_DIR" "$INCLUDE_NEXT_SHIM"
+mkdir -p "$TRANSLATE_DIR" "$EMPTY_SYSROOT" "$INCLUDE_NEXT_SHIM"
+# bionic limits.h ends with `#if __has_include_next(<limits.h>) #include_next`,
+# which on a glibc host pulls /usr/include/limits.h (__GLIBC_USE errors). A
+# stub later in the system search path absorbs that include_next.
+printf '/* absorbs bionic limits.h #include_next (see build script) */\n' >"$INCLUDE_NEXT_SHIM/limits.h"
 say "== translating C headers with --libc (host-independent)"
 (
   cd "$NATIVE"
@@ -219,7 +224,7 @@ say "== translating C headers with --libc (host-independent)"
     # path (it would point into the empty dir); bionic comes from -isystem.
     "$ZIG_BIN" translate-c --libc "$LIBC_TXT" --sysroot "$EMPTY_SYSROOT" \
       -target "aarch64-linux-android.$ANDROID_API" \
-      -O ReleaseSafe -isystem "$MERGE" -I src \
+      -O ReleaseSafe -isystem "$MERGE" -isystem "$INCLUDE_NEXT_SHIM" -I src \
       -D__ANDROID_API__="$ANDROID_API" -D__ANDROID_MIN_SDK_VERSION__="$ANDROID_API" "$@"
   }
   tc src/vendor/miniaudio/miniaudio.h >"$TRANSLATE_DIR/miniaudio.zig"
