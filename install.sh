@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# termux-opencode installer — installs the latest (or pinned) `opencode`
+# termux-opencode installer — installs the latest (or pinned) v2 `opencode`
 # release package for Termux on Android (AArch64).
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/DARKBOYJYOTI/termux-opencode/main/install.sh | bash
-#   curl -fsSL .../install.sh | bash -s -- -v 1.19.2
+#   curl -fsSL .../install.sh | bash -s -- -v 2.3.2
 #
 # What it does:
 #   1. updates Termux package lists and ensures required packages
@@ -68,7 +68,7 @@ usage() {
 	echo "Usage: install.sh [-v <version>] [-r|--reinstall]   (default: latest release)"
 	echo "  -v: install a pinned version instead of the latest release"
 	echo "  -r: reinstall even when the requested version is already installed"
-	echo "Example: install.sh -v 1.19.2"
+	echo "Example: install.sh -v 2.3.2"
 }
 
 VERSION=""
@@ -133,7 +133,7 @@ if [[ -z "$VERSION" ]]; then
 		*) die "unexpected latest tag: ${TAG:-<empty>}" ;;
 	esac
 fi
-[[ "$VERSION" =~ ^1\.[0-9]+\.[0-9]+$ ]] || die "not a v1 version: $VERSION"
+[[ "$VERSION" =~ ^2\.[0-9]+\.[0-9]+$ ]] || die "not a v2 version: $VERSION (no v2 release published yet?)"
 ok "version: $VERSION"
 
 # Already there? Like `opencode upgrade` upstream: report and stop instead

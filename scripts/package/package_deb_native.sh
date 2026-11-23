@@ -1,18 +1,22 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
-# Build the opencode DEB provider (transplant revival line, native mainline).
+# Build the opencode DEB provider for the v2 native mainline.
 #
-# This package IS the plain `opencode` name (inherited by the native mainline
-# per the 27/28 package-rename decision). Built from
-# artifacts/transplant/<ver>/opencode-native-revived; conflicts with the glibc
-# appendix package (opencode-wrapper) and the compressed transitional package
-# (opencode-compressed): installing one replaces the other.
+# Built from artifacts/transplant/<ver>/opencode-native-tui (revived v2 Bun
+# standalone with the bionic libopentui.so grafted in, official update channel
+# stripped). This package IS the plain `opencode` name and upgrades over the
+# old v1 packages of the same name.
+#
+# Layout:
+#   bin/opencode                       launcher (update notice, upgrade/uninstall)
+#   lib/opencode2/runtime/opencode     v2 Bun runtime (bionic-only)
+#   lib/opencode2/install.sh           `opencode upgrade` handler
 #
 # Native line constraints (documented in the package description):
 #   - zero glibc runtime dependencies (pure Bionic)
-#   - requires Android API >= 28
-#   - full TUI via bionic libopentui.so (W10a deep smoke 5/5); zero glibc runtime deps
+#   - requires Android API >= 31 for the TUI library (libopentui 0.8.4)
+#   - full TUI via the bionic libopentui.so built by CI
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
@@ -52,37 +56,24 @@ NATIVE_BIN="$TRANSPLANT_ROOT/$VERSION/opencode-native-tui"
 	exit 1
 }
 
-# This repository ships v1 (1.x) as the plain `opencode` command — the rename
-# from `opencode1` keeps every integration (plugins, MCP, scripts) working
-# without manual patching. The legacy `opencode1` packages are replaced.
-case "$VERSION" in
-	1.*) PKG_NAME="opencode"; PKG_CONFLICTS="opencode1, opencode1-wrapper, opencode1-compressed, opencode1-wrapper-standalone, opencode-wrapper"; PKG_REPLACES="opencode1, opencode1-wrapper-standalone" ;;
-	*)   PKG_NAME="opencode";  PKG_CONFLICTS="opencode-wrapper"; PKG_REPLACES="" ;;
-esac
-
-# The v1 native family must carry the self-activating Android seccomp handler.
-# Without it, Android's zygote filter traps Bun's close_range syscall with
-# SIGSYS before even `opencode --version` can run (observed on Android 12 / 4.14).
-if [[ "$VERSION" == 1.* ]] && ! grep -aqF libopencode-crhandler.so "$NATIVE_BIN"; then
-	echo "Error: refusing to package an unhardened opencode native runtime" >&2
-	echo "       run the native transplant + harden-native steps before packaging" >&2
-	exit 1
-fi
+# This repository ships v2 as the plain `opencode` command; the old v1
+# packages (`opencode` 1.x, legacy `opencode1*`) are replaced on install.
+PKG_NAME="opencode"
+PKG_CONFLICTS="opencode1, opencode1-wrapper, opencode1-compressed, opencode1-wrapper-standalone, opencode-wrapper"
+PKG_REPLACES="opencode1, opencode1-wrapper-standalone"
 
 # Official update channel must be structurally absent: this repository's
 # releases are the only supported upgrade path (AGENTS.md section 5). Verify
 # every known upstream anchor set is fully stripped; fail closed otherwise.
-if [[ "$VERSION" == 1.* ]]; then
-	command -v python3 >/dev/null 2>&1 || {
-		echo "Error: python3 is required to verify the stripped update channel" >&2
-		exit 1
-	}
-	python3 "$ROOT_DIR/tools/transplant/strip_official_update.py" --verify "$NATIVE_BIN" || {
-		echo "Error: refusing to package a runtime with the official update channel present" >&2
-		echo "       run: python3 tools/transplant/strip_official_update.py $NATIVE_BIN" >&2
-		exit 1
-	}
-fi
+command -v python3 >/dev/null 2>&1 || {
+	echo "Error: python3 is required to verify the stripped update channel" >&2
+	exit 1
+}
+python3 "$ROOT_DIR/tools/transplant/strip_official_update.py" --verify "$NATIVE_BIN" || {
+	echo "Error: refusing to package a runtime with the official update channel present" >&2
+	echo "       run: python3 tools/transplant/strip_official_update.py $NATIVE_BIN" >&2
+	exit 1
+}
 
 # hook_enabled NAME DEFAULT-GLOB — packaging hook registry resolver (Makefile:
 # HOOKS_ENABLE / HOOKS_DISABLE / HOOK_*_VERSIONS). HOOKS_DISABLE wins over
@@ -96,63 +87,29 @@ hook_enabled() {
 DEB_ROOT="$ROOT_DIR/packing/dpkg-native/work"
 OUT_DIR="$ROOT_DIR/packing/dpkg-native"
 OUT_FILE="$OUT_DIR/${PKG_NAME}_${VERSION}_${ARCH_DEB}.deb"
-if [[ "$VERSION" == 1.* ]]; then
-	DESCRIPTION="OpenCode v1 native Bionic CLI for Android/Termux (termux-opencode build)."
-else
-	DESCRIPTION="OpenCode native Bionic mainline for Android/Termux. Full TUI via bionic libopentui.so; zero glibc dependencies."
-fi
+DESCRIPTION="OpenCode v2 native Bionic CLI for Android/Termux (termux-opencode build). Full TUI via bionic libopentui.so; zero glibc dependencies."
 
 rm -rf "$DEB_ROOT"
 mkdir -p "$DEB_ROOT/DEBIAN" "$DEB_ROOT$PREFIX/bin" "$OUT_DIR"
 chmod 755 "$DEB_ROOT" "$DEB_ROOT/DEBIAN"
 
-if [[ "$VERSION" == 1.* ]]; then BIN_NAME="opencode"; LIB_DIR="opencode1"; else BIN_NAME="opencode"; LIB_DIR="opencode"; fi
+BIN_NAME="opencode"
 [[ -f "$ROOT_DIR/scripts/opencode-launcher.sh" ]] || {
-	echo "Error: scripts/opencode-launcher.sh missing (v1 launcher source)" >&2; exit 1; }
-if [[ "$VERSION" == 1.* ]]; then
-	# v1 layered — bare runtime under lib/opencode1/runtime/ (DT_RUNPATH
-	# $ORIGIN/../lib/opencode resolved via the launcher's LD_LIBRARY_PATH) +
-	# the XDG-isolating launcher at bin/opencode. The lib/opencode1 directory
-	# name is an internal detail kept for DT_RUNPATH compatibility; the
-	# user-facing command is `opencode`.
-	install -D -m755 "$NATIVE_BIN" "$DEB_ROOT$PREFIX/lib/opencode1/runtime/opencode"
-	install -D -m755 "$ROOT_DIR/scripts/opencode-launcher.sh" "$DEB_ROOT$PREFIX/bin/opencode"
-else
-	install -m755 "$NATIVE_BIN" "$DEB_ROOT$PREFIX/bin/$BIN_NAME"
-fi
-# v12.0: the postinst migration branch needs migrate-to-opencode1.sh on the
-# user's PATH — ship it alongside (v1 packages only; v2 branch never calls it).
-if [[ "$VERSION" == 1.* ]]; then
-	install -m755 "$ROOT_DIR/scripts/migrate-to-opencode1.sh" "$DEB_ROOT$PREFIX/bin/migrate-to-opencode1.sh"
-	echo "Packaged migrate-to-opencode1.sh (v1 migration helper)"
-fi
+	echo "Error: scripts/opencode-launcher.sh missing (launcher source)" >&2; exit 1; }
+# Layered layout: the launcher owns the update notice / upgrade / uninstall
+# handling, the runtime lives under lib/opencode2/runtime/.
+install -D -m755 "$NATIVE_BIN" "$DEB_ROOT$PREFIX/lib/opencode2/runtime/opencode"
+install -D -m755 "$ROOT_DIR/scripts/opencode-launcher.sh" "$DEB_ROOT$PREFIX/bin/opencode"
 # The `opencode upgrade` subcommand is served by the launcher from the shipped
 # installer — it installs this repository's releases, never upstream's.
-if [[ "$VERSION" == 1.* ]]; then
-	[[ -f "$ROOT_DIR/install.sh" ]] || {
-		echo "Error: install.sh missing (upgrade handler source)" >&2; exit 1; }
-	install -D -m755 "$ROOT_DIR/install.sh" "$DEB_ROOT$PREFIX/lib/opencode1/install.sh"
-	echo "Packaged install.sh (opencode upgrade handler)"
-fi
-
-# W11: ship the self-activating seccomp shim when the binary references it
-# (DT_NEEDED libopencode-crhandler.so). It must land in $PREFIX/lib/opencode/
-# to satisfy the binary's DT_RUNPATH $ORIGIN/../lib/opencode.
+[[ -f "$ROOT_DIR/install.sh" ]] || {
+	echo "Error: install.sh missing (upgrade handler source)" >&2; exit 1; }
+install -D -m755 "$ROOT_DIR/install.sh" "$DEB_ROOT$PREFIX/lib/opencode2/install.sh"
+echo "Packaged install.sh (opencode upgrade handler)"
+# The v2 runtime needs no seccomp shim (official Bun 1.4.4 Android build does
+# not issue the trapping close_range call that broke v1 on 4.14 kernels).
 if grep -aqF libopencode-crhandler.so "$NATIVE_BIN"; then
-	SHIM_SO="$(dirname "$NATIVE_BIN")/libopencode-crhandler.so"
-	if [[ ! -f "$SHIM_SO" ]]; then
-		echo "Error: hardened binary references libopencode-crhandler.so but $SHIM_SO is missing" >&2
-		echo "       (run: make seccomp-harden VER=$VERSION)" >&2
-		exit 1
-	fi
-	# shim dir is pinned to lib/opencode (the binary's DT_RUNPATH
-	# $ORIGIN/../lib/opencode) — renaming the dir with the opencode1
-	# package rename broke CANNOT LINK for any hardened v1 build (#23-adjacent).
-	mkdir -p "$DEB_ROOT$PREFIX/lib/opencode"
-	install -m644 "$SHIM_SO" "$DEB_ROOT$PREFIX/lib/opencode/libopencode-crhandler.so"
-	echo "Packaging seccomp shim: $SHIM_SO -> $PREFIX/lib/opencode/"
-else
-	echo "Note: binary is not seccomp-hardened; shipping without libopencode-crhandler.so"
+	echo "Note: v2 runtime unexpectedly references libopencode-crhandler.so; not shipped" >&2
 fi
 
 cat >"$DEB_ROOT/DEBIAN/control" <<EOF
@@ -189,7 +146,7 @@ if hook_enabled stale-serve-kill "2.0.[0-3]"; then
 # other generation's runtime path differs and is never matched.
 P="$(printf '%s' "${DPKG_MAINTSCRIPT_PACKAGE:-}")"
 case "$P" in
-  opencode)  SRV="$PREFIX/lib/opencode1/runtime/opencode" ;;
+  opencode)  SRV="$PREFIX/lib/opencode2/runtime/opencode" ;;
   *)         SRV="" ;;
 esac
 if [ -n "$SRV" ] && pgrep -f "^$SRV( |$)" >/dev/null 2>&1; then
@@ -219,19 +176,10 @@ if [ -f "$STALE" ] && command -v file >/dev/null 2>&1; then
   fi
 fi
 
-# v1 data hook: the packaged runtime reads the OFFICIAL plain layout
-# (<root>/opencode). If legacy nested opencode1 data exists, move it back
-# (conflicting plain dirs are backed aside, never deleted).
-case "${PKG_NAME:-$DPKG_MAINTSCRIPT_PACKAGE}" in
-  opencode)
-    echo "OpenCode v1 (termux-opencode build) installed."
-    if command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
-      migrate-to-opencode1.sh replain || echo "Data layout check reported issues — data left untouched (see above)."
-    else
-      echo "Migration helper not on PATH; skipping data layout check."
-    fi
-    ;;
-esac
+# v2 reads the same official plain data layout as v1 (<root>/opencode). No
+# data migration runs here: user data is never moved or deleted by packaging.
+echo "OpenCode v2 (termux-opencode build) installed."
+echo "Data layout unchanged: ${XDG_CONFIG_HOME:-$HOME/.config}/opencode etc."
 exit 0
 POSTINST
 chmod 755 "$DEB_ROOT/DEBIAN/postinst"

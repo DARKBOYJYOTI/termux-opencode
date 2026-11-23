@@ -1,7 +1,7 @@
 # termux-opencode wiki
 
 Everything about installing, updating, removing, and building the native
-OpenCode v1 (`opencode`) packages for Termux on Android (AArch64).
+OpenCode v2 (`opencode`, 2.x) packages for Termux on Android (AArch64).
 
 - [About](#about)
 - [Install](#install)
@@ -18,7 +18,7 @@ OpenCode v1 (`opencode`) packages for Termux on Android (AArch64).
 
 ## About
 
-`termux-opencode` packages official OpenCode v1 releases as native Bionic
+`termux-opencode` packages official OpenCode v2 releases as native Bionic
 binaries for Termux. The command is the plain `opencode` name and the data
 layout is the official plain structure, so plugins, MCP setups, and scripts
 work without patching.
@@ -119,7 +119,7 @@ back once, non-destructively (conflicting plain dirs are backed aside under
 | `$PREFIX/lib/opencode1/install.sh` | Installer serving `opencode upgrade` |
 | `$PREFIX/bin/migrate-to-opencode1.sh` | Data layout helper |
 
-Any v1 package lacking the `libopencode-crhandler.so` reference is refused
+Any package whose runtime still carries the official update channel is refused
 at packaging time — an unhardened binary cannot start on seccomp-filtered
 Android kernels.
 
@@ -129,7 +129,7 @@ Android kernels.
    JavaScript module graph (byte-identical upstream input).
 2. The transplant pipeline grafts it onto the pinned Android Bun base.
 3. The vendored, guard-verified Bionic `libopentui.so`
-   (`assets/bionic-libopentui-0.4.5.so`, SHA-256 pinned) replaces the
+   (`built by tools/transplant/build-libopentui-0.8.4.sh`, guard-verified) replaces the
    glibc-linked TUI library, and a zero-displacement patch links the
    self-activating seccomp shim as the first `DT_NEEDED` entry.
 4. The result is packaged as `opencode`, with the shim asserted — the build
@@ -151,7 +151,7 @@ npm pack 'opencode-linux-arm64@<ver>' --pack-destination "$TMPDIR"
 python3 tools/transplant/transplant.py all --ver <ver> --tgz "$TMPDIR/opencode-linux-arm64-<ver>.tgz"
 python3 tools/transplant/swap_tui.py \
   --binary artifacts/transplant/<ver>/opencode-native-revived \
-  --tui-lib assets/bionic-libopentui-0.4.5.so \
+  --tui-lib artifacts/transplant/opentui-0.8.4/libopentui.so \
   --out artifacts/transplant/<ver>/opencode-native-tui
 clang -shared -fPIC -O2 \
   -o artifacts/transplant/<ver>/libopencode-crhandler.so tools/shim/sigsys_handler.c

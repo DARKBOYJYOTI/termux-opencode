@@ -5,13 +5,13 @@
 
 ## 1. Overview
 
-`termux-opencode` ships native OpenCode **v1** as the plain `opencode`
+`termux-opencode` ships native OpenCode **v2** (2.x) as the plain `opencode`
 command for **Termux on Android (AArch64)**. Pure Bionic runtime, zero glibc
-dependencies, full TUI. Single branch (`main`), v1-only, reproducible builds,
-verified on a real device.
+dependencies, full TUI (libopentui 0.8.4 built in CI). Single branch
+(`main`), v2-only, reproducible builds, verified on a real device.
 
 - Upstream input is always byte-identical official release material
-  (`opencode-linux-arm64@<ver>` npm tarball). We never fork upstream code.
+  (`@opencode/cli-linux-arm64@<ver>` npm tarball). We never fork upstream code.
 - This repository is the **only supported upgrade path**. The official
   installer, official auto-update, and official binaries must never be mixed
   into these packages or recommended to users.
@@ -22,17 +22,18 @@ verified on a real device.
 | --- | --- |
 | `install.sh` | One-line user installer (repo releases only, checksum-verified) |
 | `scripts/opencode-launcher.sh` | Shipped launcher — source of `$PREFIX/bin/opencode`; routes `upgrade`/`uninstall`, never re-roots XDG |
-| `scripts/package/package_deb_native.sh` | Native `.deb` packager; refuses unhardened v1 runtimes |
-| `scripts/migrate-to-opencode1.sh` | One-time, idempotent v1 data migration helper (name is historical) |
+| `scripts/package/package_deb_native.sh` | Native `.deb` packager; verifies the stripped update channel |
+| `scripts/migrate-to-opencode1.sh` | Legacy v1 helper (no longer shipped by v2 packages) |
 | `scripts/common.sh` | Shared shell helpers (unit-tested) |
 | `scripts/fetch-fixtures.sh` | Downloads golden-fixture tarballs (never commit the tarballs) |
 | `tools/transplant/` | Transplant + revive + harden pipeline (stdlib-only Python) |
-| `tools/shim/sigsys_handler.c` | Seccomp handler source (close_range SIGSYS fix) |
+| `tools/shim/sigsys_handler.c` | Legacy v1 seccomp handler source (v2 needs no shim) |
 | `tools/build-bionic/` | Bionic platform patch helpers |
-| `assets/bionic-libopentui-0.4.5.so` | Vendored Bionic TUI lib, SHA-256 pinned (guard-verified) |
-| `patches/opentui/` | Guard patches for rebuilding the Bionic libopentui from source |
+| `assets/bionic-libopentui-0.4.5.so` | Legacy v1 TUI lib (unused by v2) |
+| `patches/opentui/android-bionic-0.8.4.patch` | 0.8.4 bionic build + FFI guard patches |
+| `tools/transplant/build-libopentui-0.8.4.sh` | Reproducible bionic libopentui 0.8.4 build |
 | `tests/` | Shell unit tests + transplant golden regression |
-| `.github/workflows/build-opencode-native.yml` | Manual-dispatch CI build (v1 only) |
+| `.github/workflows/build-opencode-native.yml` | Manual-dispatch CI build (v2 only) |
 | `.github/workflows/tests.yml` | Shell unit tests on push/PR |
 
 ## 3. Build pipeline (must run in this order)
@@ -56,9 +57,8 @@ verified on a real device.
    The packager refuses a runtime that still carries any stripped anchor.
 5. **Package** — `ARCH_DEB=aarch64 VERSION=<V> TRANSPLANT_ROOT=<dir>
    bash ./scripts/package/package_deb_native.sh`
-   The packager **fails closed**: an unhardened v1 binary is refused, a
-   runtime with the official update channel is refused, and the shim must be
-   present in the `.deb`.
+   The packager **fails closed**: a runtime with the official update channel
+   (anchor set `2.3.2`) is refused. v2 needs no seccomp shim.
 
 CI (`--no-execve`) produces the binary; **final acceptance is always on a
 real Termux device**: `opencode --version` prints the version, the TUI starts
@@ -66,7 +66,7 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 
 ## 4. Release flow
 
-- Release tags: `opencode-<ver>` (e.g. `opencode-1.19.1`). Never reuse an
+- Release tags: `opencode-<ver>` (e.g. `opencode-2.3.2`). Never reuse an
   upstream-only tag form — the launcher's update check matches `opencode-*`.
 - Attach `opencode_<ver>_aarch64.deb` **and** `opencode_<ver>_aarch64.deb.sha256`
   (format: `<hash>  <path>`; the installer compares field 1).
@@ -116,8 +116,8 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 - Never auto-kill processes on uninstall: the binary-path pattern also
   matches the invoking agent/background sessions, and killing them strands
   the user mid-operation (observed live). Print PIDs and let the operator
-  stop them. Same reason the v2-only postinst kill hook must never be
-  widened to v1.
+  stop them. The postinst kill hook targets only
+  `$PREFIX/lib/opencode2/runtime/opencode`.
 - Our own notice lives in the launcher (`_termux_opencode_update_notice`):
   queries this repo's `releases/latest`, matches tag `opencode-*`, compares
   with `sort -V` against the installed `dpkg` version. Constraints, in order:
@@ -152,7 +152,7 @@ and stays up, no `libm.so.6` / SIGSYS errors.
   conflict, never delete). The old `isolate` direction is retired from
   packaging; postinst calls `replain` only.
 - `migrate-to-opencode1.sh` keeps its historical filename (postinst calls it).
-- Version inputs accept stable v1 only (`^1\.[0-9]+\.[0-9]+$`); 2.x is
+- Version inputs accept stable v2 only (`^2\.[0-9]+\.[0-9]+$`); 1.x is
   rejected by the workflow and the installer.
 
 ## 7. Conventions

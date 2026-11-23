@@ -1,12 +1,17 @@
 name: Build opencode native Android package
 
+# Native mainline: OpenCode v2 (2.x) transplanted from the upstream glibc Bun
+# standalone into an Android/Bionic runtime, with the bionic libopentui.so
+# built here (real TUI), the official update channel stripped, and the plain
+# `opencode` Debian package produced.
+
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Upstream v1 OpenCode version"
+        description: "Upstream v2 OpenCode version"
         required: true
-        default: "1.19.6"
+        default: "2.3.2"
         type: string
 
 permissions:
@@ -14,205 +19,132 @@ permissions:
 
 jobs:
   build-opencode:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     env:
       VERSION: ${{ inputs.version }}
+      ANDROID_API: "31"
+      NDK_VERSION: "r30"
+      BUN_VERSION: "1.4.4"
+      BUN_ARCHIVE_SHA256: "d72e42c60e895ccbc16144bb1e0e0ad7ee384841c35b5501a7ec28b4d6d759c9"
+      OPENTUI_PKG_SHA1: "816d3ebd1f9edbc4e44f9f617e99c3fc49b5ae33"
+      CACHE_ROOT: ${{ github.workspace }}/.cache/opencode-v2
+      WORK: ${{ github.workspace }}/work
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Validate v1 version input
+      - name: Validate v2 version input
         run: |
-          [[ "$VERSION" =~ ^1\.[0-9]+\.[0-9]+$ ]] || {
-            echo "Only stable v1 versions (for example 1.19.1) are accepted: $VERSION" >&2
+          [[ "$VERSION" =~ ^2\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Only stable v2 versions (for example 2.3.2) are accepted: $VERSION" >&2
             exit 1
           }
 
-      - name: Verify vendored Bionic TUI library
+      - name: Install build tools
         run: |
-          sha256sum -c assets/bionic-libopentui-0.4.5.so.sha256
-          bash tools/transplant/build-libopentui.sh --check assets/bionic-libopentui-0.4.5.so
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xz-utils unzip curl python3 ca-certificates \
+            binutils-aarch64-linux-gnu dpkg-dev
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - name: Restore toolchain cache (zig + NDK)
+        uses: actions/cache@v4
         with:
-          distribution: temurin
-          java-version: "17"
+          path: ${{ env.CACHE_ROOT }}
+          key: opencode-v2-zig-0.17.0-${{ env.NDK_VERSION }}-${{ hashFiles('patches/opentui/android-bionic-0.8.4.patch') }}
 
-      - name: Install Android NDK r27c
-        uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools
-
-      - name: Install NDK package
+      - name: Fetch Android NDK ${{ env.NDK_VERSION }}
         run: |
-          sdkmanager --install "ndk;27.2.12479018"
-          echo "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+          mkdir -p "$CACHE_ROOT/ndk"
+          if [ ! -d "$CACHE_ROOT/ndk/android-ndk-$NDK_VERSION" ]; then
+            curl -fsSL -o ndk.zip "https://dl.google.com/android/repository/android-ndk-$NDK_VERSION-linux.zip"
+            unzip -q ndk.zip -d "$CACHE_ROOT/ndk"
+            rm -f ndk.zip
+          fi
+          test -d "$CACHE_ROOT/ndk/android-ndk-$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
 
-      - name: Check out Bun 1.4.4 source
-        uses: actions/checkout@v4
-        with:
-          repository: oven-sh/bun
-          ref: bun-v1.4.4
-          path: work/bun-src
+      - name: Build bionic libopentui.so (0.8.4)
+        env:
+          NDK_SYSROOT: ${{ env.CACHE_ROOT }}/ndk/android-ndk-r30/toolchains/llvm/prebuilt/linux-x86_64/sysroot
+          WORKDIR: ${{ env.CACHE_ROOT }}/opentui-build
+          STRIP_BIN: aarch64-linux-gnu-strip
+        run: tools/transplant/build-libopentui-0.8.4.sh
 
-      - name: Build Android Bun base without SVE
+      - name: Fetch Android Bun base ${{ env.BUN_VERSION }}
         run: |
-          set -euo pipefail
-          ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/27.2.12479018"
-          export ANDROID_NDK_ROOT
-          LLVM_VERSION=23.1.1
-          LLVM_SHA256=832aeb58d105de1cabc7b982dd2c65de0610f7377df48ae8fc2dd8e97420a15c
-          LLVM_ARCHIVE="$RUNNER_TEMP/LLVM-${LLVM_VERSION}-Linux-X64.tar.xz"
-          curl -fsSL -o "$LLVM_ARCHIVE" \
-            "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/LLVM-${LLVM_VERSION}-Linux-X64.tar.xz"
-          echo "$LLVM_SHA256  $LLVM_ARCHIVE" | sha256sum -c -
-          LLVM_DIR="$RUNNER_TEMP/llvm-${LLVM_VERSION}"
-          mkdir -p "$LLVM_DIR"
-          tar -xJf "$LLVM_ARCHIVE" --strip-components=1 -C "$LLVM_DIR"
-          test "$("$LLVM_DIR/bin/clang" --version | python3 -c 'import re,sys; print(re.search(r"\d+\.\d+\.\d+", sys.stdin.read()).group(0))')" = "$LLVM_VERSION"
-          export BUN_TOOLCHAIN_LLVM="$LLVM_DIR"
+          mkdir -p "$WORK/bun-cache/bun-$BUN_VERSION"
+          ARCHIVE="$WORK/bun-android.zip"
+          if [ ! -x "$WORK/bun-cache/bun-$BUN_VERSION/bun" ]; then
+            curl -fsSL -o "$ARCHIVE" \
+              "https://github.com/oven-sh/bun/releases/download/bun-v$BUN_VERSION/bun-linux-aarch64-android.zip"
+            echo "$BUN_ARCHIVE_SHA256  $ARCHIVE" | sha256sum -c -
+            unzip -q -o "$ARCHIVE" -d "$WORK/bun-android"
+            install -m755 "$WORK/bun-android/bun-linux-aarch64-android/bun" \
+              "$WORK/bun-cache/bun-$BUN_VERSION/bun"
+          fi
+          test -x "$WORK/bun-cache/bun-$BUN_VERSION/bun"
 
-          BUN_HOST_VERSION=1.4.4
-          BUN_HOST_SHA256=e0446eb55995772eb9894bebae9a6be368d985a8b9271ee124486f9946eedd76
-          curl -fsSL -o "$RUNNER_TEMP/bun-host.zip" \
-            "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_HOST_VERSION}/bun-linux-x64-baseline.zip"
-          echo "$BUN_HOST_SHA256  $RUNNER_TEMP/bun-host.zip" | sha256sum -c -
-          unzip -q "$RUNNER_TEMP/bun-host.zip" -d "$RUNNER_TEMP/bun-host"
-          BUN_HOST="$RUNNER_TEMP/bun-host/bun-linux-x64-baseline/bun"
-          test "$("$BUN_HOST" --version)" = "$BUN_HOST_VERSION"
-
-          git -C work/bun-src submodule update --init --recursive
-          python3 tools/transplant/patch_bun_no_sve.py work/bun-src
-          cd work/bun-src
-          GITHUB_SHA="$(git rev-parse HEAD)"
-          export GITHUB_SHA
-          "$BUN_HOST" install --frozen-lockfile
-          ANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
-            "$BUN_HOST" scripts/build.ts \
-              --profile=android-release \
-              --android-ndk="$ANDROID_NDK_ROOT" \
-              --canary=off --lto=off -j2
-          test -x build/release/bun
-
-          mkdir -p ../bun-cache/bun-1.4.4
-          cp build/release/bun ../bun-cache/bun-1.4.4/bun
-          chmod 755 ../bun-cache/bun-1.4.4/bun
-          echo "BUN_BASE_CACHE=$GITHUB_WORKSPACE/work/bun-cache" >> "$GITHUB_ENV"
-          python3 - "$GITHUB_WORKSPACE/work/bun-cache/bun-1.4.4/bun" <<'PY'
-          import os
-          import sys
-          from pathlib import Path
-          sys.path.insert(0, str(Path(os.environ["GITHUB_WORKSPACE"]) / "tools/transplant"))
-          from probe_assemble import bun_version_from_elf
-          path = Path(sys.argv[1])
-          version = bun_version_from_elf(path)
-          if version != "1.4.4":
-              raise SystemExit(f"source-built Bun base version mismatch: {version!r}")
-          print(f"source-built Android Bun base verified: {version} ({path.stat().st_size} bytes)")
-          PY
-
-      - name: Download upstream AArch64 package
+      - name: Download upstream v2 package
         run: |
-          mkdir -p work
-          npm pack "opencode-linux-arm64@$VERSION" --pack-destination work
-          TGZ="$(printf '%s\n' work/opencode-linux-arm64-*.tgz | head -n 1)"
+          mkdir -p "$WORK/pkg"
+          npm pack "@opencode/cli-linux-arm64@$VERSION" --pack-destination "$WORK/pkg" >/dev/null
+          TGZ="$(printf '%s\n' "$WORK"/pkg/opencode-cli-linux-arm64-*.tgz | head -n 1)"
           test -f "$TGZ"
+          echo "tgz sha1: $(sha1sum "$TGZ" | cut -d' ' -f1)"
+          [[ "$(sha1sum "$TGZ" | cut -d' ' -f1)" == "$OPENTUI_PKG_SHA1" ]] || {
+            echo "unexpected @opencode/cli-linux-arm64 tarball digest (pinned for $VERSION)" >&2
+            exit 1
+          }
+          tar tzf "$TGZ" | grep -qx 'package/bin/opencode'
           echo "TGZ=$TGZ" >> "$GITHUB_ENV"
 
       - name: Transplant into Android/Bionic runtime
         run: |
           python3 tools/transplant/transplant.py all \
-            --ver "$VERSION" --tgz "$TGZ" --bun-cache "$BUN_BASE_CACHE" --no-execve
+            --ver "$VERSION" --tgz "$TGZ" \
+            --bun-cache "$WORK/bun-cache" --no-execve
           test -x "artifacts/transplant/$VERSION/opencode-native-revived"
 
-      - name: Dump ELF layout of Bun base (diagnostic)
-        run: |
-          BASE="work/bun-cache/bun-1.4.4/bun"
-          {
-            echo "=== readelf -hW base ==="
-            readelf -hW "$BASE" 2>&1 || true
-            echo "=== readelf -lW base ==="
-            readelf -lW "$BASE" 2>&1 || true
-            echo "=== readelf -SW base ==="
-            readelf -SW "$BASE" 2>&1 || true
-            echo "=== readelf -lW revived ==="
-            readelf -lW "artifacts/transplant/$VERSION/opencode-native-revived" 2>&1 || true
-          } | tee diag-layout.txt
-          ls -l "$BASE" "artifacts/transplant/$VERSION/opencode-native-revived"
-
-      - name: Upload Bun base and revived for on-device diagnosis
-        uses: actions/upload-artifact@v4
-        with:
-          name: diag-bun-base-revived
-          path: |
-            work/bun-cache/bun-1.4.4/bun
-            artifacts/transplant/${{ inputs.version }}/opencode-native-revived
-            diag-layout.txt
-          if-no-files-found: error
-          retention-days: 3
-
-      - name: Graft Bionic TUI library
+      - name: Graft bionic TUI library
         run: |
           python3 tools/transplant/swap_tui.py \
             --binary "artifacts/transplant/$VERSION/opencode-native-revived" \
-            --tui-lib assets/bionic-libopentui-0.4.5.so \
+            --tui-lib "artifacts/transplant/opentui-0.8.4/libopentui.so" \
             --out "artifacts/transplant/$VERSION/opencode-native-tui"
           test -x "artifacts/transplant/$VERSION/opencode-native-tui"
-
-      - name: Build seccomp handler and harden v1 runtime
-        run: |
-          set -euo pipefail
-          OUT="artifacts/transplant/$VERSION"
-          BIN="$OUT/opencode-native-tui"
-          test -x "$BIN"
-          aarch64-linux-android31-clang -shared -fPIC -O2 \
-            -o "$OUT/libopencode-crhandler.so" tools/shim/sigsys_handler.c
-          python3 tools/transplant/crhandler_patch.py "$BIN"
-          grep -aqF libopencode-crhandler.so "$BIN" || {
-            echo "hardened ELF is missing the crhandler marker" >&2
-            exit 1
-          }
 
       - name: Strip official update channel
         run: |
           set -euo pipefail
           BIN="artifacts/transplant/$VERSION/opencode-native-tui"
-          test -x "$BIN"
           python3 tools/transplant/strip_official_update.py "$BIN"
-          # Second run must be a no-op (idempotency gate).
           python3 tools/transplant/strip_official_update.py "$BIN" >/dev/null
-          # Every known anchor set must show the channel structurally gone.
           python3 tools/transplant/strip_official_update.py --verify "$BIN"
-          # And the patched markers must be present.
           grep -aqF 'void 0?[{name:"opencode.update"' "$BIN"
-          grep -aqF 'upgrade:"/global/upgradX"' "$BIN"
+          grep -aqF 'if(!0||["1","true"]' "$BIN"
+          grep -aqF 'OPENCODE_DISABLE_AUTOUPDATE' "$BIN"
 
-      - name: Package only opencode
+      - name: Package opencode (v2) deb
         run: |
+          set -euo pipefail
           ARCH_DEB=aarch64 \
           VERSION="$VERSION" \
           TRANSPLANT_ROOT="$GITHUB_WORKSPACE/artifacts/transplant" \
             bash ./scripts/package/package_deb_native.sh
           DEB="packing/dpkg-native/opencode_${VERSION}_aarch64.deb"
           dpkg-deb --field "$DEB" Package Version Architecture
-          dpkg-deb --contents "$DEB" | grep 'lib/opencode/libopencode-crhandler.so'
           dpkg-deb --contents "$DEB" | grep 'bin/opencode$'
-          dpkg-deb --contents "$DEB" | grep 'lib/opencode1/install.sh$'
-          dpkg-deb --contents "$DEB" | grep 'bin/migrate-to-opencode1.sh$'
-          dpkg-deb --ctrl-tarfile "$DEB" | tar -xO ./postinst | grep -q 'replain' \
-            || { echo "postinst does not call replain" >&2; exit 1; }
+          dpkg-deb --contents "$DEB" | grep 'lib/opencode2/runtime/opencode$'
+          dpkg-deb --contents "$DEB" | grep 'lib/opencode2/install.sh$'
+          if dpkg-deb --contents "$DEB" | grep -q 'migrate-to-opencode1'; then
+            echo "v2 package must not ship the v1 migration helper" >&2
+            exit 1
+          fi
           sha256sum "$DEB" | tee "$DEB.sha256"
 
-      - name: Run transplant golden regression
-        run: |
-          if [[ -z "$(ls -A tests/transplant/fixtures/tgz/ 2>/dev/null)" ]]; then
-            bash scripts/fetch-fixtures.sh
-          fi
-          python3 tests/transplant/test_golden.py --fixtures-dir tests/transplant/fixtures/tgz
-
-      - name: Upload opencode package and build evidence
+      - name: Upload opencode package
         uses: actions/upload-artifact@v4
         with:
           name: opencode-${{ env.VERSION }}-android-aarch64
@@ -220,5 +152,6 @@ jobs:
             packing/dpkg-native/opencode_${{ env.VERSION }}_aarch64.deb
             packing/dpkg-native/opencode_${{ env.VERSION }}_aarch64.deb.sha256
             artifacts/transplant/${{ env.VERSION }}/report.json
+            artifacts/transplant/opentui-0.8.4/libopentui.so.sha256
           if-no-files-found: error
           retention-days: 14

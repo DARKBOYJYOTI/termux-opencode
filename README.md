@@ -5,10 +5,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-3fb950?style=flat-square)](./LICENSE)
 [![Termux: AArch64](https://img.shields.io/badge/Termux-AArch64-1f6feb?style=flat-square)](https://termux.dev)
 
-Native [OpenCode](https://opencode.ai) v1 (`opencode`) for **Termux on
+Native [OpenCode](https://opencode.ai) v2 (`opencode`, 2.x) for **Termux on
 Android (AArch64)** — installed, updated, and uninstalled the way `opencode`
 users expect, served entirely from this repository. Pure Bionic runtime,
-full TUI, verified on real devices.
+full TUI (libopentui 0.8.4 built in CI), verified on real devices.
 
 > This repository is the only supported upgrade path. The official update
 > channel is removed from the runtime at build time — no update checks, no

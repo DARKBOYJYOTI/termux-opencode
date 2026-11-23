@@ -122,6 +122,22 @@ ANCHOR_SETS = [
             ),
         ],
     ),
+    (
+        # 2.3.x (v2 runtime): the autoupdate check and the "opencode.update"
+        # command entry are the two structural sites; the CLI `upgrade`
+        # subcommand stays but the packaged launcher serves/intercepts it.
+        "2.3.2",
+        [
+            (
+                b'if(U2||["1","true"]',
+                b'if(!0||["1","true"]',
+            ),
+            (
+                b'W.open?[{name:"opencode.update"',
+                b'void 0?[{name:"opencode.update"',
+            ),
+        ],
+    ),
 ]
 
 ANCHORS = ANCHOR_SETS[-1][1]
@@ -288,7 +304,7 @@ def selftest() -> int:
         raise AssertionError("duplicate anchor did not fail closed")
 
     # A missing anchor (upstream drift) must fail closed.
-    drift = pristine.replace(ANCHORS[2][0], b"X" * len(ANCHORS[2][0]), 1)
+    drift = pristine.replace(ANCHORS[-1][0], b"X" * len(ANCHORS[-1][0]), 1)
     try:
         transform(drift)
     except ValueError:
