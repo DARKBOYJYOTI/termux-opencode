@@ -17,8 +17,8 @@
 - A release artifact that does not match its published SHA-256.
 - A binary or script in this repo that exfiltrates data or executes
   unsigned remote code at install/run time.
-- A packaging step that silently drops a hardening guard (seccomp shim,
-  Bionic TUI graft) instead of failing closed.
+- A packaging step that silently drops a hardening guard (Bionic TUI graft,
+  launcher update guards) instead of failing closed.
 
 ## Secret-handling rules for contributors
 

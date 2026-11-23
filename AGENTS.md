@@ -165,7 +165,7 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 
 ## 8. Anti-patterns (do not do these)
 
-- Do not weaken or skip the graft/update-strip assertions to "make the build pass".
+- Do not weaken or skip the graft/update-guard assertions to "make the build pass".
 - Do not commit generated outputs: `artifacts/`, `*.deb`, `*.tgz`,
   `tests/vendor/`, `__pycache__/` (all ignored).
 - Do not commit tokens, keys, `.env` files, `hosts.yml` contents, or
@@ -208,8 +208,8 @@ On-device acceptance for every release candidate:
 
 | Symptom | Root cause | Fix |
 | --- | --- | --- |
-| `Bad system call`, exit 159 | Unhardened binary (no shim) | Rebuild via section 3; never ship it |
-| `libm.so.6 not found` at TUI start | glibc `libopentui` in bundle (swap skipped) | Re-run the graft step; check slot fit |
+| `Could not detect the installation method` | In-process update from the TUI (blocked by design) | Use `opencode upgrade` from the launcher |
+| TUI fails or hangs at start | glibc `libopentui` in bundle (swap skipped) | Re-run the graft step; check slot fit |
 | `No command opencode1 found` for users | Stale `alias opencode="opencode1"` in `~/.bashrc` | Remove the alias line (installer adds none) |
 | Doubled data dirs (`opencode1/opencode1/...`) | Migration ran with pre-isolated ambient XDG vars | Delete only the doubled trees (live data is at plain paths); normalization (section 6) prevents recurrence |
 | Uninstaller kills the agent/user session | Auto-`pkill` on the runtime path matches the invoker too | Never auto-kill: warn with PIDs only (section 5) |

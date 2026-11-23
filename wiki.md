@@ -61,10 +61,12 @@ opencode upgrade --reinstall # force a reinstall of the same version
 Behavior: resolves the target (explicit version, else our latest release),
 compares it with the installed version, and stops with "already on … —
 nothing to do" unless there is something newer (or `--reinstall` is given).
-Downloads are checksum-verified. The runtime's own update channel is removed
-at build time (no `/update` command, no official check, and every in-process
-official install path is disabled), so an official build can never overwrite
-this hardened runtime. `dpkg -i` with a `.deb` works too.
+Downloads are checksum-verified. The launcher disables the official
+background update check (`OPENCODE_DISABLE_AUTOUPDATE=1`) and intercepts
+`upgrade`/`update`/`uninstall` in any argument position, so an official build
+can never overwrite this hardened runtime. An in-process update started from
+the TUI fails without downloading (`Could not detect the installation
+method`). `dpkg -i` with a `.deb` works too.
 
 ## Uninstall
 
@@ -122,8 +124,7 @@ back once, non-destructively (conflicting plain dirs are backed aside under
 `keybinds.agent.cycle` (or you set that variable yourself); CLI settings merge,
 so other keybindings are untouched.
 
-Any package whose runtime still carries the official update channel is refused
-at packaging time.
+The packager refuses a launcher that misses either guard.
 
 ## How it works
 
@@ -174,8 +175,8 @@ opencode --version
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `Bad system call`, exit 159 | Unhardened binary (no shim) | Reinstall this repo's package; never mix official binaries |
-| `libm.so.6 not found` at TUI start | glibc `libopentui.so` in the bundle | Rebuild with the Bionic graft step |
+| `Could not detect the installation method` | In-process update from the TUI (blocked by design) | Use `opencode upgrade` from the launcher |
+| TUI fails or hangs at start | glibc `libopentui.so` still embedded | Rebuild with the Bionic graft step (`swap_tui.py`) |
 | Installer stops after the packages step | A tool read the piped script stream | Fixed: every child gets stdin from `/dev/null`; re-run |
 | `No command opencode1 found` | Stale `alias opencode="opencode1"` in `~/.bashrc` | Remove the alias line |
 | No update notice though newer exists | Cache (< 24 h), non-TTY, or offline | Wait a day / use a terminal / check network |
