@@ -62,16 +62,21 @@ PKG_NAME="opencode"
 PKG_CONFLICTS="opencode1, opencode1-wrapper, opencode1-compressed, opencode1-wrapper-standalone, opencode-wrapper"
 PKG_REPLACES="opencode1, opencode1-wrapper-standalone"
 
-# Official update channel must be structurally absent: this repository's
-# releases are the only supported upgrade path (AGENTS.md section 5). Verify
-# every known upstream anchor set is fully stripped; fail closed otherwise.
-command -v python3 >/dev/null 2>&1 || {
-	echo "Error: python3 is required to verify the stripped update channel" >&2
+# Update-channel guards: this repository's releases are the only supported
+# upgrade path (AGENTS.md section 5). The launcher must disable the official
+# background check and intercept upgrade/uninstall; fail closed otherwise.
+# Official update channel policy: v2 upstream ships the update logic as Bun
+# bytecode, so same-length module-graph edits are not reliable. Enforcement
+# lives in the launcher instead: it disables the background check by default
+# (OPENCODE_DISABLE_AUTOUPDATE=1) and intercepts upgrade/update/uninstall in
+# any argument position. Refuse to package a launcher missing either guard.
+LAUNCHER_SRC="$ROOT_DIR/scripts/opencode-launcher.sh"
+grep -q 'OPENCODE_DISABLE_AUTOUPDATE="\${OPENCODE_DISABLE_AUTOUPDATE:-1}"' "$LAUNCHER_SRC" || {
+	echo "Error: launcher does not disable the official update check by default" >&2
 	exit 1
 }
-python3 "$ROOT_DIR/tools/transplant/strip_official_update.py" --verify "$NATIVE_BIN" || {
-	echo "Error: refusing to package a runtime with the official update channel present" >&2
-	echo "       run: python3 tools/transplant/strip_official_update.py $NATIVE_BIN" >&2
+grep -q '_subcommand "$@"' "$LAUNCHER_SRC" || {
+	echo "Error: launcher does not scan argv for upgrade/update/uninstall" >&2
 	exit 1
 }
 

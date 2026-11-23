@@ -22,7 +22,7 @@ dependencies, full TUI (libopentui 0.8.4 built in CI). Single branch
 | --- | --- |
 | `install.sh` | One-line user installer (repo releases only, checksum-verified) |
 | `scripts/opencode-launcher.sh` | Shipped launcher — source of `$PREFIX/bin/opencode`; routes `upgrade`/`uninstall`, never re-roots XDG |
-| `scripts/package/package_deb_native.sh` | Native `.deb` packager; verifies the stripped update channel |
+| `scripts/package/package_deb_native.sh` | Native `.deb` packager; verifies the launcher update guards |
 | `scripts/common.sh` | Shared shell helpers (unit-tested) |
 | `tools/transplant/` | Transplant + revive + harden pipeline (stdlib-only Python) |
 | `patches/opentui/android-bionic-0.8.4.patch` | 0.8.4 bionic build + FFI guard patches |
@@ -40,18 +40,10 @@ dependencies, full TUI (libopentui 0.8.4 built in CI). Single branch
    (`tools/transplant/build-libopentui-0.8.4.sh`) and swap the glibc
    libopentui inside the binary for it (slot must fit; swap fails loudly):
    `python3 tools/transplant/swap_tui.py --binary <revived> --tui-lib artifacts/transplant/opentui-0.8.4/libopentui.so --out <tui>`
-3. **Strip official update** — same-length edits to the plaintext module graph
-   remove the official update channel structurally (anchor set `2.3.2`: the
-   autoupdate gate is forced off and the palette `opencode.update` command is
-   removed; the CLI `upgrade` subcommand stays, but the launcher serves it
-   from this repository). Every anchor must occur exactly once, else fail
-   closed:
-   `python3 tools/transplant/strip_official_update.py <tui-binary>`
-   The packager refuses a runtime that still carries any stripped anchor.
-4. **Package** — `ARCH_DEB=aarch64 VERSION=<V> TRANSPLANT_ROOT=<dir>
+3. **Package** — `ARCH_DEB=aarch64 VERSION=<V> TRANSPLANT_ROOT=<dir>
    bash ./scripts/package/package_deb_native.sh`
-   The packager **fails closed**: a runtime with the official update channel
-   (anchor set `2.3.2`) is refused. v2 needs no seccomp shim.
+   The packager **fails closed**: a launcher without the autoupdate default
+   and argv-scan intercepts is refused. v2 needs no seccomp shim.
 
 CI (`--no-execve`) produces the binary; **final acceptance is always on a
 real Termux device**: `opencode --version` prints the version, the TUI starts
@@ -75,26 +67,23 @@ and stays up, no `libm.so.6` / SIGSYS errors.
   be rebuilt and re-pinned first — do not ship a version whose TUI asset was
   never smoke-tested.
 
-## 5. Update-channel policy (code-level)
+## 5. Update-channel policy (launcher-level)
 
-- The official update channel is removed at BUILD time
-  (`tools/transplant/strip_official_update.py`, section 3). Six same-length
-  edits to the embedded module graph: (1) hardwire the
-  `OPENCODE_DISABLE_AUTOUPDATE` flag default true; (2) short-circuit the auto
-  detection function; (3) make the TUI `/update` palette entry never register;
-  (4) force the `Installation.upgrade` guard true so any in-process official
-  install throws before touching the network/filesystem (covers the dialog's
-  `apply()`, the server route, and a direct `runtime/opencode upgrade`); (5)
-  point the `POST /global/upgrade` route at a non-existent path (404); (6) stop
-  the updater wrapper's version fetch. No official check, notice, `/update`
-  command, or update dialog can exist even if the environment is bypassed or
-  the runtime is invoked directly. The packager fails closed if any anchor is
-  still present. Anchors are grouped per known upstream build (minified
-  identifiers drift between releases); an unknown layout fails closed, so a
-  bump that renames identifiers needs a newly verified anchor set.
-- The launcher ALSO exports `OPENCODE_DISABLE_AUTOUPDATE=1` (belt and
-  suspenders). The upstream `upgrade` flow (including its "Install anyways?"
-  prompt) is never reachable.
+- v2 executes the update/uninstall modules from Bun **bytecode**, so the
+  v1-style same-length module-graph strip is not reliable and is not used.
+  Enforcement lives in the launcher and fails closed at packaging time:
+  - `OPENCODE_DISABLE_AUTOUPDATE=1` is exported by default; the background
+    check logs `update check skipped reason=disabled` (verified on device).
+  - `_subcommand` scans argv (global flags may precede the subcommand) and
+    intercepts `upgrade`/`update`/`uninstall` in any position, serving this
+    repository's installer instead of the upstream flow.
+  - The packager refuses a launcher missing either guard.
+- An explicit in-process update from the TUI cannot detect this install
+  method and fails without downloading (`Could not detect the installation
+  method`), same as a direct `upgrade` run with no `--method`.
+- The supported entry point is `$PREFIX/bin/opencode`. Running
+  `lib/opencode2/runtime/opencode` directly bypasses the launcher and is
+  unsupported.
 - `opencode upgrade [version]` is intercepted by the launcher and served by
   the shipped `$PREFIX/lib/opencode1/install.sh` (packaged from repo root
   `install.sh`): it installs this repo's releases, never upstream's. All
@@ -190,7 +179,6 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 
 ```bash
 ./tests/run.sh                                   # shell unit tests (must pass)
-python3 tools/transplant/strip_official_update.py --selftest
 bash -n install.sh scripts/opencode-launcher.sh scripts/package/package_deb_native.sh
 cat install.sh | bash -s -- -v <ver>             # real pipe-mode installer test
 ```

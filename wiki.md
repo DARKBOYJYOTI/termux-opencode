@@ -133,8 +133,9 @@ at packaging time.
 3. The guard-verified Bionic `libopentui.so`
    (built by `tools/transplant/build-libopentui-0.8.4.sh`) replaces the
    glibc-linked TUI library.
-4. The official update channel is stripped structurally and the result is
-   packaged as `opencode`; packaging fails closed on an unstripped runtime.
+4. The launcher disables the official update check by default and intercepts
+   `upgrade`/`update`/`uninstall`, so the package only ever updates from this
+   repository; packaging fails closed if those guards are missing.
 
 Final runtime acceptance always happens on a real Termux device.
 
@@ -142,8 +143,8 @@ Final runtime acceptance always happens on a real Termux device.
 
 Via CI (recommended): `Actions → Build opencode native Android package →
 Run workflow` with input `version`. It downloads the upstream tarball,
-transplants, grafts, strips the update channel, packages **only**
-`opencode`, and uploads the `.deb` + SHA-256 + build report.
+transplants, grafts the bionic TUI, packages **only** `opencode`, and
+uploads the `.deb` + SHA-256 + build report.
 
 On-device (Termux, AArch64), with `<ver>` being the target version:
 
@@ -154,7 +155,6 @@ python3 tools/transplant/swap_tui.py \
   --binary artifacts/transplant/<ver>/opencode-native-revived \
   --tui-lib artifacts/transplant/opentui-0.8.4/libopentui.so \
   --out artifacts/transplant/<ver>/opencode-native-tui
-python3 tools/transplant/strip_official_update.py artifacts/transplant/<ver>/opencode-native-tui
 ARCH_DEB=aarch64 VERSION=<ver> TRANSPLANT_ROOT="$PWD/artifacts/transplant" \
   bash ./scripts/package/package_deb_native.sh
 dpkg -i packing/dpkg-native/opencode_<ver>_aarch64.deb

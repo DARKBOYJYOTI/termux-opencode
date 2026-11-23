@@ -92,37 +92,69 @@ _termux_opencode_update_notice() {
 }
 _termux_opencode_update_notice
 
+# The subcommand is the first non-flag argument (v2 accepts global flags before
+# the subcommand, e.g. `opencode --auto upgrade`), so scan instead of looking
+# at $1 only. The packaged runtime also has these subcommands renamed away, but
+# the launcher stays the first line of defence.
+_subcommand() {
+	for _arg in "$@"; do
+		case "$_arg" in
+			--) return 0 ;;
+			-*) continue ;;
+			*) printf '%s' "$_arg"; return 0 ;;
+		esac
+	done
+	return 0
+}
+_cmd="$(_subcommand "$@")"
+
 # `opencode upgrade` serves this repository's releases — never the upstream
 # flow (which would overwrite this hardened runtime with an official build).
 # `opencode upgrade [version]` reuses the shipped installer; everything else
 # passes through to the runtime untouched.
-if [ "${1:-}" = "upgrade" ] || [ "${1:-}" = "update" ]; then
-	shift
+if [ "$_cmd" = "upgrade" ] || [ "$_cmd" = "update" ]; then
 	_installer="$P/lib/opencode2/install.sh"
 	if [ ! -f "$_installer" ]; then
 		echo "opencode: upgrade handler missing ($_installer not shipped)" >&2
 		exit 1
 	fi
+	_rest=()
+	_seen=0
+	for _arg in "$@"; do
+		if [ "$_seen" = "0" ] && [ "$_arg" = "$_cmd" ]; then
+			_seen=1
+			continue
+		fi
+		_rest+=("$_arg")
+	done
 	_args=()
-	while [[ $# -gt 0 ]]; do
-		case "$1" in
-			-r|--reinstall) _args+=("$1"); shift ;;
+	for _arg in ${_rest[@]+"${_rest[@]}"}; do
+		case "$_arg" in
+			-r|--reinstall) _args+=("$_arg") ;;
 			-h|--help) exec bash "$_installer" --help < /dev/null ;;
-			-*) echo "opencode: unknown upgrade option: $1" >&2; exit 1 ;;
-			*) _args+=(-v "$1"); shift ;;
+			-*) echo "opencode: ignoring runtime flag for upgrade: $_arg" >&2 ;;
+			*) _args+=(-v "$_arg") ;;
 		esac
 	done
-	exec bash "$_installer" "${_args[@]}" < /dev/null
+	exec bash "$_installer" ${_args[@]+"${_args[@]}"} < /dev/null
 fi
 
 # `opencode uninstall` removes exactly what this repository installed — never
 # the upstream flow (which deletes data dirs by default), never anything
 # else. Default keeps all user data; `--purge-data` removes the four official
 # data roots after confirmation (or `--force`). `--dry-run` only prints.
-if [ "${1:-}" = "uninstall" ]; then
-	shift
+if [ "$_cmd" = "uninstall" ]; then
+	_rest=()
+	_seen=0
+	for _arg in "$@"; do
+		if [ "$_seen" = "0" ] && [ "$_arg" = "$_cmd" ]; then
+			_seen=1
+			continue
+		fi
+		_rest+=("$_arg")
+	done
 	_purge=0; _force=0; _dry=0
-	for _arg in ${1:+"$@"}; do
+	for _arg in ${_rest[@]+"${_rest[@]}"}; do
 		case "$_arg" in
 			--purge-data) _purge=1 ;;
 			--force|-f) _force=1 ;;

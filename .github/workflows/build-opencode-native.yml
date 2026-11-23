@@ -115,17 +115,6 @@ jobs:
             --out "artifacts/transplant/$VERSION/opencode-native-tui"
           test -x "artifacts/transplant/$VERSION/opencode-native-tui"
 
-      - name: Strip official update channel
-        run: |
-          set -euo pipefail
-          BIN="artifacts/transplant/$VERSION/opencode-native-tui"
-          python3 tools/transplant/strip_official_update.py "$BIN"
-          python3 tools/transplant/strip_official_update.py "$BIN" >/dev/null
-          python3 tools/transplant/strip_official_update.py --verify "$BIN"
-          grep -aqF 'void 0?[{name:"opencode.update"' "$BIN"
-          grep -aqF 'if(!0||["1","true"]' "$BIN"
-          grep -aqF 'OPENCODE_DISABLE_AUTOUPDATE' "$BIN"
-
       - name: Package opencode (v2) deb
         run: |
           set -euo pipefail
@@ -142,6 +131,10 @@ jobs:
             echo "v2 package must not ship the v1 migration helper" >&2
             exit 1
           fi
+          LAUNCHER_IN_DEB="$WORK/launcher.$$"
+          dpkg-deb --fsys-tarfile "$DEB" | tar xO ./data/data/com.termux/files/usr/bin/opencode >"$LAUNCHER_IN_DEB"
+          grep -q 'OPENCODE_DISABLE_AUTOUPDATE' "$LAUNCHER_IN_DEB"
+          grep -q '_subcommand "$@"' "$LAUNCHER_IN_DEB"
           sha256sum "$DEB" | tee "$DEB.sha256"
 
       - name: Upload opencode package

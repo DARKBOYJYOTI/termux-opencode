@@ -12,10 +12,10 @@ full TUI (libopentui 0.8.4 built in CI), verified on real devices.
 `Tab` cycles the agent (plan/build), matching the v1 keybinding; set
 `keybinds.agent.cycle` in `cli.json` to override.
 
-> This repository is the only supported upgrade path. The official update
-> channel is removed from the runtime at build time — no update checks, no
-> `/update` command, no notices, no update dialog. Releases, notices, and
-> upgrades all come from here. Details: [wiki.md](./wiki.md).
+> This repository is the only supported upgrade path. The launcher disables
+> the official background update check and serves `upgrade`/`uninstall` from
+> this repository, so official binaries are never downloaded. Releases,
+> notices, and upgrades all come from here. Details: [wiki.md](./wiki.md).
 
 ## Install
 
