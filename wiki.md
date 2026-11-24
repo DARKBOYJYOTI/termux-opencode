@@ -1,4 +1,4 @@
-# termux-opencode wiki
+# OpenCode on Termux (Android AArch64) — wiki
 
 Everything about installing, updating, removing, and building the native
 OpenCode v2 (`opencode`, 2.x) packages for Termux on Android (AArch64).
