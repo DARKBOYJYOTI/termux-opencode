@@ -5,11 +5,11 @@
 #
 # OpenCode v2 embeds a *glibc* libopentui.so in its bun standalone payload, so
 # the TUI cannot dlopen it on Android. This script rebuilds the same library
-# (OpenTUI 0.9.4, git d4a2af24) for aarch64-linux-android with zig 0.17.0 and
+# (OpenTUI 0.9.4, git ff939592) for aarch64-linux-android with zig 0.17.1 and
 # installs a drop-in replacement for tools/transplant/swap_tui.py.
 #
 # Hard-won requirements (do not "simplify" these away):
-#   1. zig 0.17.0 changed the --libc spec: crt_dir/cc_dir/gcc_dir are required,
+#   1. zig 0.17.1 changed the --libc spec: crt_dir/cc_dir/gcc_dir are required,
 #      and zig only accepts a libc installation when it can *find* libc.so on
 #      the library path. We therefore pass -Dbionic-libdir=<crt dir> and keep
 #      libc.so/libm.so/libdl.so symlinks there (libpthread/librt -> libc.so:
@@ -41,7 +41,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 OPENTUI_VERSION="0.9.4"
 OPENTUI_COMMIT="ff939592dc7bd102a4665bf340c4960b868b306b"
-ZIG_VERSION="0.17.0"
+ZIG_VERSION="0.17.1"
 
 # --- configurable locations (override via env) ---------------------------------
 HOST_ARCH="$(uname -m)"

@@ -53,7 +53,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.CACHE_ROOT }}
-          key: opencode-v2-zig-0.17.0-${{ env.NDK_VERSION }}-${{ hashFiles('patches/opentui/android-bionic-0.9.4.patch') }}
+          key: opencode-v2-zig-0.17.1-${{ env.NDK_VERSION }}-${{ hashFiles('patches/opentui/android-bionic-0.9.4.patch') }}
 
       - name: Fetch Android NDK ${{ env.NDK_VERSION }}
         run: |
