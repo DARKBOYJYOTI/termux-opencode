@@ -30,7 +30,7 @@
 #       unjoinable instead of referencing a missing symbol.
 diff -ruN a/packages/native/build.zig b/packages/native/build.zig
 --- a/packages/native/build.zig	2026-11-19 18:03:11.000000000 +0530
-+++ b/packages/native/build.zig	2026-11-24 11:49:02.886678749 +0530
++++ b/packages/native/build.zig	2026-11-24 12:05:38.786678369 +0530
 @@ -363,6 +363,15 @@
  // Set by -Drequire-video. Release builds pass it so a missing FFmpeg prefix fails instead of shipping without video.
  var require_video = false;
@@ -133,6 +133,18 @@ diff -ruN a/packages/native/build.zig b/packages/native/build.zig
      if (require_video and !video_enabled) {
          std.debug.print("error: -Drequire-video conflicts with -Dvideo=false\n", .{});
          std.process.exit(1);
+@@ -940,7 +994,10 @@
+     const build_step = b.step(build_step_name, try std.fmt.allocPrint(b.allocator, "Build for {s}", .{description}));
+     for (createLibraries(b, target, optimize, build_options, macos_sdk_path)) |lib| {
+         const windows = target.result.os.tag == .windows;
+-        if (lib.isStaticLibrary() and (windows or target.result.os.tag == .linux)) {
++        // Android/bionic: the archive is not shipped, and bundle-libcxx's probe
++        // link cannot take the --libc spec this cross build needs, so install
++        // the plain archive instead of bundling libc++ into it.
++        if (lib.isStaticLibrary() and (windows or target.result.os.tag == .linux) and target.result.abi != .android) {
+             // Linux has no system libc++ to count on, so the archive carries Zig's. MSVC has none of MinGW's
+             // runtime, so the Windows archive carries what of it MSVC lacks. The shared library installs the header.
+             const run = b.addRunArtifact(bundleTool(b, windows));
 diff -ruN a/packages/native/src/android-untag.c b/packages/native/src/android-untag.c
 --- a/packages/native/src/android-untag.c	1970-01-01 05:30:00.000000000 +0530
 +++ b/packages/native/src/android-untag.c	2026-11-24 11:49:02.826678749 +0530
