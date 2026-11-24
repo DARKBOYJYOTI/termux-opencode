@@ -1,7 +1,7 @@
-name: build-libopentui-0.8.4
+name: build-libopentui-0.9.4
 
 # Cross-builds the Android/bionic libopentui.so that opencode2 embeds
-# (OpenTUI 0.8.4 native library). Runs on x86_64 CI with the Android NDK
+# (OpenTUI 0.9.4 native library). Runs on x86_64 CI with the Android NDK
 # sysroot, so no device is needed. The produced .so is verified statically
 # (DT_NEEDED, FFI guard patterns, size vs the embedded asset slot); the
 # dlopen check only runs on aarch64 hosts (i.e. on device).
@@ -9,18 +9,18 @@ name: build-libopentui-0.8.4
 on:
   push:
     branches:
-      - v2-opentui-0.8.4-ci
+      - v2-opentui-0.9.4-ci
     paths:
-      - "patches/opentui/android-bionic-0.8.4.patch"
-      - "tools/transplant/build-libopentui-0.8.4.sh"
+      - "patches/opentui/android-bionic-0.9.4.patch"
+      - "tools/transplant/build-libopentui-0.9.4.sh"
       - "tools/transplant/swap_tui.py"
-      - ".github/workflows/build-libopentui-0.8.4.yml"
+      - ".github/workflows/build-libopentui-0.9.4.yml"
   pull_request:
     paths:
-      - "patches/opentui/android-bionic-0.8.4.patch"
-      - "tools/transplant/build-libopentui-0.8.4.sh"
+      - "patches/opentui/android-bionic-0.9.4.patch"
+      - "tools/transplant/build-libopentui-0.9.4.sh"
       - "tools/transplant/swap_tui.py"
-      - ".github/workflows/build-libopentui-0.8.4.yml"
+      - ".github/workflows/build-libopentui-0.9.4.yml"
   workflow_dispatch:
 
 permissions:
@@ -47,7 +47,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.CACHE_ROOT }}
-          key: opentui-084-zig-0.17.0-ndk-${{ env.NDK_VERSION }}-${{ hashFiles('patches/opentui/android-bionic-0.8.4.patch') }}
+          key: opentui-094-zig-0.17.0-ndk-${{ env.NDK_VERSION }}-${{ hashFiles('patches/opentui/android-bionic-0.9.4.patch') }}
 
       - name: Fetch Android NDK ${{ env.NDK_VERSION }}
         run: |
@@ -64,17 +64,17 @@ jobs:
           NDK_SYSROOT: ${{ env.CACHE_ROOT }}/ndk/android-ndk-r30/toolchains/llvm/prebuilt/linux-x86_64/sysroot
           WORKDIR: ${{ env.CACHE_ROOT }}/build
           STRIP_BIN: aarch64-linux-gnu-strip
-        run: tools/transplant/build-libopentui-0.8.4.sh
+        run: tools/transplant/build-libopentui-0.9.4.sh
 
       - name: Report artifact
         run: |
-          ls -l artifacts/transplant/opentui-0.8.4/
-          cat artifacts/transplant/opentui-0.8.4/libopentui.so.sha256
-          readelf -d artifacts/transplant/opentui-0.8.4/libopentui.so | grep NEEDED
+          ls -l artifacts/transplant/opentui-0.9.4/
+          cat artifacts/transplant/opentui-0.9.4/libopentui.so.sha256
+          readelf -d artifacts/transplant/opentui-0.9.4/libopentui.so | grep NEEDED
 
       - name: Upload libopentui.so
         uses: actions/upload-artifact@v4
         with:
-          name: libopentui-0.8.4-android-arm64
-          path: artifacts/transplant/opentui-0.8.4/
+          name: libopentui-0.9.4-android-arm64
+          path: artifacts/transplant/opentui-0.9.4/
           if-no-files-found: error

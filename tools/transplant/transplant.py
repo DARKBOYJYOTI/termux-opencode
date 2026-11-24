@@ -1417,7 +1417,7 @@ def cmd_all(args) -> int:
     )
     # Prefer the embed variant (rc6-b2-upx-tui todo2): same sections/vaddrs as
     # the full build but symtab locals dropped so it fits the exact-length
-    # bunfs slot measured from the previous build. build-libopentui-0.8.4.sh emits
+    # bunfs slot measured from the previous build. build-libopentui-0.9.4.sh emits
     # and guard-verifies it alongside the full copy.
     embed = bionic_lib.with_name(bionic_lib.name.replace(".so", ".embed.so"))
     if embed.is_file():

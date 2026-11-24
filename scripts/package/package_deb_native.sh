@@ -15,7 +15,7 @@ set -euo pipefail
 #
 # Native line constraints (documented in the package description):
 #   - zero glibc runtime dependencies (pure Bionic)
-#   - requires Android API >= 31 for the TUI library (libopentui 0.8.4)
+#   - requires Android API >= 31 for the TUI library (libopentui 0.9.4)
 #   - full TUI via the bionic libopentui.so built by CI
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

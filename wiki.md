@@ -132,7 +132,7 @@ The packager refuses a launcher that misses either guard.
    JavaScript module graph (byte-identical upstream input).
 2. The transplant pipeline grafts it onto the pinned Android Bun base.
 3. The guard-verified Bionic `libopentui.so`
-   (built by `tools/transplant/build-libopentui-0.8.4.sh`) replaces the
+   (built by `tools/transplant/build-libopentui-0.9.4.sh`) replaces the
    glibc-linked TUI library.
 4. The launcher disables the official update check by default and intercepts
    `upgrade`/`update`/`uninstall`, so the package only ever updates from this
@@ -154,7 +154,7 @@ npm pack "@opencode/cli-linux-arm64@<ver>" --pack-destination "$TMPDIR"
 python3 tools/transplant/transplant.py all --ver <ver> --tgz "$TMPDIR/opencode-cli-linux-arm64-<ver>.tgz"
 python3 tools/transplant/swap_tui.py \
   --binary artifacts/transplant/<ver>/opencode-native-revived \
-  --tui-lib artifacts/transplant/opentui-0.8.4/libopentui.so \
+  --tui-lib artifacts/transplant/opentui-0.9.4/libopentui.so \
   --out artifacts/transplant/<ver>/opencode-native-tui
 ARCH_DEB=aarch64 VERSION=<ver> TRANSPLANT_ROOT="$PWD/artifacts/transplant" \
   bash ./scripts/package/package_deb_native.sh

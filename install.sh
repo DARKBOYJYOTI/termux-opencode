@@ -4,7 +4,7 @@
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/DARKBOYJYOTI/termux-opencode/main/install.sh | bash
-#   curl -fsSL .../install.sh | bash -s -- -v 2.3.2
+#   curl -fsSL .../install.sh | bash -s -- -v 2.4.1
 #
 # What it does:
 #   1. updates Termux package lists and ensures required packages
@@ -68,7 +68,7 @@ usage() {
 	echo "Usage: install.sh [-v <version>] [-r|--reinstall]   (default: latest release)"
 	echo "  -v: install a pinned version instead of the latest release"
 	echo "  -r: reinstall even when the requested version is already installed"
-	echo "Example: install.sh -v 2.3.2"
+	echo "Example: install.sh -v 2.4.1"
 }
 
 VERSION=""

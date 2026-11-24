@@ -8,7 +8,7 @@
 Native [OpenCode](https://opencode.ai) v2 (`opencode`, 2.x) for **Termux on
 Android (AArch64)** — installed, updated, and uninstalled the way `opencode`
 users expect, served entirely from this repository. Pure Bionic runtime,
-full TUI (libopentui 0.8.4 built in CI), verified on real devices.
+full TUI (libopentui 0.9.4 built in CI), verified on real devices.
 `Tab` cycles the agent (plan/build), matching the v1 keybinding; set
 `keybinds.agent.cycle` in `cli.json` to override.
 

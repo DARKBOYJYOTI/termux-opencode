@@ -306,7 +306,7 @@ def main() -> int:
         print(
             "swap_tui: REFUSED — tui-lib is glibc-linked (DT_NEEDED libc.so.6 "
             "& co) and cannot dlopen on bionic; build via "
-            "tools/transplant/build-libopentui-0.8.4.sh",
+            "tools/transplant/build-libopentui-0.9.4.sh",
             file=sys.stderr,
         )
         return 6
@@ -315,7 +315,7 @@ def main() -> int:
         print(
             "swap_tui: REFUSED — tui-lib lacks the FFI negative-coordinate "
             "guard v2 (patches/opentui/*.patch); build via "
-            "tools/transplant/build-libopentui-0.8.4.sh which applies + verifies them",
+            "tools/transplant/build-libopentui-0.9.4.sh which applies + verifies them",
             file=sys.stderr,
         )
         return 5

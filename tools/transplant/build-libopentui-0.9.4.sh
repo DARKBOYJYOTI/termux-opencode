@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# build-libopentui-0.8.4.sh — reproducible bionic build of the OpenTUI native
+# build-libopentui-0.9.4.sh — reproducible bionic build of the OpenTUI native
 # library used by OpenCode v2 (opencode2).
 #
 # OpenCode v2 embeds a *glibc* libopentui.so in its bun standalone payload, so
 # the TUI cannot dlopen it on Android. This script rebuilds the same library
-# (OpenTUI 0.8.4, git d4a2af24) for aarch64-linux-android with zig 0.17.0 and
+# (OpenTUI 0.9.4, git d4a2af24) for aarch64-linux-android with zig 0.17.0 and
 # installs a drop-in replacement for tools/transplant/swap_tui.py.
 #
 # Hard-won requirements (do not "simplify" these away):
@@ -23,24 +23,24 @@
 #      above Number.MAX_SAFE_INTEGER. src/android-untag.c disables heap tagging
 #      via mallopt(M_BIONIC_SET_HEAP_TAGGING_LEVEL, NONE) in a constructor.
 #   4. swap_tui.py verifies the FFI negative-coordinate guard (mov w,#0x7fffffff
-#      clamp + csel ..., vs). The 0.8.4 source predates those guards, so the
+#      clamp + csel ..., vs). The 0.9.4 source predates those guards, so the
 #      patch ports them; this script fails loudly if they are missing.
 #   5. The replacement .so must fit the embedded asset slot (7,442,112 bytes).
 #      Debug info alone makes it 24 MB, so --strip-debug (NOT --strip-all:
 #      swap_tui needs .symtab to find the guard-owner functions).
 #
 # Usage:
-#   tools/transplant/build-libopentui-0.8.4.sh
-#   tools/transplant/build-libopentui-0.8.4.sh --check <libopentui.so>
+#   tools/transplant/build-libopentui-0.9.4.sh
+#   tools/transplant/build-libopentui-0.9.4.sh --check <libopentui.so>
 #
-# Output: artifacts/transplant/opentui-0.8.4/libopentui.so (+ .sha256)
+# Output: artifacts/transplant/opentui-0.9.4/libopentui.so (+ .sha256)
 #
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-OPENTUI_VERSION="0.8.4"
-OPENTUI_COMMIT="d4a2af24ba50636da5f222367f91746a1bf89644"
+OPENTUI_VERSION="0.9.4"
+OPENTUI_COMMIT="ff939592dc7bd102a4665bf340c4960b868b306b"
 ZIG_VERSION="0.17.0"
 
 # --- configurable locations (override via env) ---------------------------------
@@ -60,17 +60,17 @@ NDK_SYSROOT="${NDK_SYSROOT:-}"
 SKIP_DLOPEN="${SKIP_DLOPEN:-}"
 SYSTEM_LIBDIR="${SYSTEM_LIBDIR:-/system/lib64}"
 ANDROID_API="${ANDROID_API:-31}"
-PATCH_FILE="${PATCH_FILE:-$REPO_ROOT/patches/opentui/android-bionic-0.8.4.patch}"
+PATCH_FILE="${PATCH_FILE:-$REPO_ROOT/patches/opentui/android-bionic-0.9.4.patch}"
 SHIM_SO="${SHIM_SO:-$REPO_ROOT/tools/transplant/toolchain/w7b-shim.so}"
-OUT_DIR="${OUT_DIR:-$REPO_ROOT/artifacts/transplant/opentui-0.8.4}"
+OUT_DIR="${OUT_DIR:-$REPO_ROOT/artifacts/transplant/opentui-0.9.4}"
 WORKDIR="${WORKDIR:-${TMPDIR:-/tmp}/opentui-$OPENTUI_VERSION-build}"
 SOURCE_URL="${SOURCE_URL:-https://codeload.github.com/anomalyco/opentui/tar.gz/$OPENTUI_COMMIT}"
 ZIG_URL="${ZIG_URL:-https://ziglang.org/download/$ZIG_VERSION/zig-$ZIG_HOST-linux-$ZIG_VERSION.tar.xz}"
 ZIG_BIN="${ZIG_BIN:-$WORKDIR/zig-$ZIG_HOST-linux-$ZIG_VERSION/zig}"
-EMBEDDED_SLOT_BYTES="${EMBEDDED_SLOT_BYTES:-7442112}"
+EMBEDDED_SLOT_BYTES="${EMBEDDED_SLOT_BYTES:-7788816}"
 
 say() { printf '%s\n' "$*" >&2; }
-die() { printf 'build-libopentui-0.8.4: %s\n' "$*" >&2; exit 1; }
+die() { printf 'build-libopentui-0.9.4: %s\n' "$*" >&2; exit 1; }
 
 verify_guard() {
   local lib="$1"
@@ -83,7 +83,7 @@ lib = open(lib_path, "rb").read()
 if swap_tui.is_glibc_linked(lib):
     sys.exit("glibc-linked .so (DT_NEEDED libc.so.6) can not dlopen on bionic")
 if not swap_tui.has_ffi_guard(lib):
-    sys.exit("FFI negative-coordinate guard missing (patches/opentui/android-bionic-0.8.4.patch not applied?)")
+    sys.exit("FFI negative-coordinate guard missing (patches/opentui/android-bionic-0.9.4.patch not applied?)")
 EOF
 }
 

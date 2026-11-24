@@ -7,7 +7,7 @@
 
 `termux-opencode` ships native OpenCode **v2** (2.x) as the plain `opencode`
 command for **Termux on Android (AArch64)**. Pure Bionic runtime, zero glibc
-dependencies, full TUI (libopentui 0.8.4 built in CI). Single branch
+dependencies, full TUI (libopentui 0.9.4 built in CI). Single branch
 (`main`), v2-only, reproducible builds, verified on a real device.
 
 - Upstream input is always byte-identical official release material
@@ -25,8 +25,8 @@ dependencies, full TUI (libopentui 0.8.4 built in CI). Single branch
 | `scripts/package/package_deb_native.sh` | Native `.deb` packager; verifies the launcher update guards |
 | `scripts/common.sh` | Shared shell helpers (unit-tested) |
 | `tools/transplant/` | Transplant + revive + harden pipeline (stdlib-only Python) |
-| `patches/opentui/android-bionic-0.8.4.patch` | 0.8.4 bionic build + FFI guard patches |
-| `tools/transplant/build-libopentui-0.8.4.sh` | Reproducible bionic libopentui 0.8.4 build |
+| `patches/opentui/android-bionic-0.9.4.patch` | 0.9.4 bionic build + FFI guard patches |
+| `tools/transplant/build-libopentui-0.9.4.sh` | Reproducible bionic libopentui 0.9.4 build |
 | `tests/` | Shell unit tests (bats) |
 | `.github/workflows/build-opencode-native.yml` | Manual-dispatch CI build (v2 only) |
 | `.github/workflows/tests.yml` | Shell unit tests on push/PR |
@@ -36,10 +36,10 @@ dependencies, full TUI (libopentui 0.8.4 built in CI). Single branch
 1. **Transplant** — graft the official module graph onto the pinned Android
    Bun base:
    `python3 tools/transplant/transplant.py all --ver <V> --tgz <tgz>`
-2. **TUI graft** — build the bionic libopentui 0.8.4
-   (`tools/transplant/build-libopentui-0.8.4.sh`) and swap the glibc
+2. **TUI graft** — build the bionic libopentui 0.9.4
+   (`tools/transplant/build-libopentui-0.9.4.sh`) and swap the glibc
    libopentui inside the binary for it (slot must fit; swap fails loudly):
-   `python3 tools/transplant/swap_tui.py --binary <revived> --tui-lib artifacts/transplant/opentui-0.8.4/libopentui.so --out <tui>`
+   `python3 tools/transplant/swap_tui.py --binary <revived> --tui-lib artifacts/transplant/opentui-0.9.4/libopentui.so --out <tui>`
 3. **Package** — `ARCH_DEB=aarch64 VERSION=<V> TRANSPLANT_ROOT=<dir>
    bash ./scripts/package/package_deb_native.sh`
    The packager **fails closed**: a launcher without the autoupdate default
@@ -51,7 +51,7 @@ and stays up, no `libm.so.6` / SIGSYS errors.
 
 ## 4. Release flow
 
-- Release tags: `opencode-<ver>` (e.g. `opencode-2.3.2`). Never reuse an
+- Release tags: `opencode-<ver>` (e.g. `opencode-2.4.1`). Never reuse an
   upstream-only tag form — the launcher's update check matches `opencode-*`.
 - Attach `opencode_<ver>_aarch64.deb` **and** `opencode_<ver>_aarch64.deb.sha256`
   (format: `<hash>  <path>`; the installer compares field 1).

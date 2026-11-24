@@ -1,7 +1,7 @@
-# android-bionic-0.8.4 — build OpenTUI 0.8.4 (git d4a2af24ba50636da5f222367f91746a1bf89644)
+# android-bionic-0.9.4 — build OpenTUI 0.9.4 (git ff939592dc7bd102a4665bf340c4960b868b306b)
 # packages/native for aarch64-linux-android (Termux/bionic). Apply with
 # `patch -p1` at the OpenTUI source root before building; verified by
-# tools/transplant/build-libopentui-0.8.4.sh (CI runs it with the NDK sysroot).
+# tools/transplant/build-libopentui-0.9.4.sh (CI runs it with the NDK sysroot).
 #
 # Why: OpenCode v2 embeds a glibc libopentui.so that cannot dlopen on bionic,
 # and the JS FFI layer stores pointers as numbers (safe-integer checked), so
@@ -22,19 +22,19 @@
 #     - constructor that calls mallopt(M_BIONIC_SET_HEAP_TAGGING_LEVEL, NONE)
 #       so scudo returns canonical (<= 2^53) heap pointers to JS.
 #   packages/native/src/buffer.zig
-#     - FFI negative-coordinate guards ported to 0.8.4: clamp u32 scissor
+#     - FFI negative-coordinate guards ported to 0.9.4: clamp u32 scissor
 #       sizes (mov w, #0x7fffffff), saturating ends (csel ..., vs), bit31
 #       setCell early-returns, INT32_MIN negation guards for text/grayscale.
 #   packages/native/src/clipboard/host.zig
 #     - bionic has no pthread_tryjoin_np; keep the clipboard worker
 #       unjoinable instead of referencing a missing symbol.
-diff --git a/packages/native/build.zig b/packages/native/build.zig
---- a/packages/native/build.zig
-+++ b/packages/native/build.zig
-@@ -366,6 +366,15 @@
- 
+diff -ruN a/packages/native/build.zig b/packages/native/build.zig
+--- a/packages/native/build.zig	2026-11-19 18:03:11.000000000 +0530
++++ b/packages/native/build.zig	2026-11-24 11:49:02.886678749 +0530
+@@ -363,6 +363,15 @@
  // Set by -Drequire-video. Release builds pass it so a missing FFmpeg prefix fails instead of shipping without video.
  var require_video = false;
+ var video_enabled = true;
 +// Set by -Dbionic-libdir for Android/bionic hosts (libc/libm/libdl live in /system/lib64).
 +var bionic_libdir: ?[]const u8 = null;
 +var bionic_include: ?[]const u8 = null;
@@ -47,7 +47,7 @@ diff --git a/packages/native/build.zig b/packages/native/build.zig
  var video_unavailable_warned: std.StringHashMapUnmanaged(void) = .empty;
  
  // Names the FFmpeg prefix that scripts/build-ffmpeg.ts builds for this target, if any.
-@@ -451,6 +460,26 @@
+@@ -450,6 +459,26 @@
      switch (target.result.os.tag) {
          .macos => addMacOSSystemLibraries(b, module, macos_sdk_path.?),
          .linux => {
@@ -74,7 +74,7 @@ diff --git a/packages/native/build.zig b/packages/native/build.zig
              module.linkSystemLibrary("dl", .{});
              module.linkSystemLibrary("pthread", .{});
              module.linkSystemLibrary("m", .{});
-@@ -496,12 +525,23 @@
+@@ -495,12 +524,23 @@
      optimize: std.lang.Optimize,
      target: std.Build.ResolvedTarget,
  ) void {
@@ -98,7 +98,7 @@ diff --git a/packages/native/build.zig b/packages/native/build.zig
      module.addImport("miniaudio", miniaudio_translate.createModule());
  
      const yoga_dep = b.dependency("yoga", .{});
-@@ -511,6 +551,11 @@
+@@ -510,6 +550,11 @@
          .optimize = optimize,
      });
      yoga_translate.addIncludePath(yoga_dep.path(""));
@@ -110,7 +110,7 @@ diff --git a/packages/native/build.zig b/packages/native/build.zig
      module.addImport("yoga", yoga_translate.createModule());
      addContextABIHeader(b, module, optimize, target);
  }
-@@ -526,6 +571,11 @@
+@@ -525,6 +570,11 @@
          .target = target,
          .optimize = optimize,
      });
@@ -122,20 +122,20 @@ diff --git a/packages/native/build.zig b/packages/native/build.zig
      module.addImport("context_abi_c", header.createModule());
  }
  
-@@ -631,6 +681,10 @@
-     const build_all = b.option(bool, "all", "Build for all supported targets") orelse false;
+@@ -617,6 +667,10 @@
      const gpa_safe_stats = b.option(bool, "gpa-safe-stats", "Enable GPA safety checks for trustworthy allocator stats") orelse false;
      require_video = b.option(bool, "require-video", "Fail when a target's FFmpeg prefix is missing instead of building without video") orelse false;
+     video_enabled = b.option(bool, "video", "Enable FFmpeg video decoding when available") orelse true;
 +    bionic_libdir = b.option([]const u8, "bionic-libdir", "Bionic shared-library dir (Android builds)");
 +    bionic_include = b.option([]const u8, "bionic-include", "Merged bionic header dir (Android builds)");
 +    bionic_api = b.option([]const u8, "bionic-api", "Android API level for __ANDROID_API__ (Android builds)");
 +    bionic_translate_dir = b.option([]const u8, "bionic-translate-dir", "Pre-generated translate-c output dir (Android builds)");
-     const macos_sdk_path = resolveMacOSSDKPath(b);
-     const build_options = b.addOptions();
-     build_options.addOption(bool, "gpa_safe_stats", gpa_safe_stats);
-diff --git a/packages/native/src/android-untag.c b/packages/native/src/android-untag.c
---- a/packages/native/src/android-untag.c
-+++ b/packages/native/src/android-untag.c
+     if (require_video and !video_enabled) {
+         std.debug.print("error: -Drequire-video conflicts with -Dvideo=false\n", .{});
+         std.process.exit(1);
+diff -ruN a/packages/native/src/android-untag.c b/packages/native/src/android-untag.c
+--- a/packages/native/src/android-untag.c	1970-01-01 05:30:00.000000000 +0530
++++ b/packages/native/src/android-untag.c	2026-11-24 11:49:02.826678749 +0530
 @@ -0,0 +1,23 @@
 +/* android-untag.c - disable Android heap pointer tagging for this process.
 + *
@@ -160,10 +160,10 @@ diff --git a/packages/native/src/android-untag.c b/packages/native/src/android-u
 +__attribute__((constructor)) static void opentui_disable_heap_tagging(void) {
 +    (void)mallopt(M_BIONIC_SET_HEAP_TAGGING_LEVEL, M_HEAP_TAGGING_LEVEL_NONE);
 +}
-diff --git a/packages/native/src/buffer.zig b/packages/native/src/buffer.zig
---- a/packages/native/src/buffer.zig
-+++ b/packages/native/src/buffer.zig
-@@ -845,8 +845,13 @@
+diff -ruN a/packages/native/src/buffer.zig b/packages/native/src/buffer.zig
+--- a/packages/native/src/buffer.zig	2026-11-19 18:03:11.000000000 +0530
++++ b/packages/native/src/buffer.zig	2026-11-24 11:49:02.826678749 +0530
+@@ -838,8 +838,13 @@
  
      pub fn isPointInScissor(self: *const OptimizedBuffer, x: i32, y: i32) bool {
          const scissor = self.getCurrentScissorRect() orelse return true;
@@ -179,7 +179,7 @@ diff --git a/packages/native/src/buffer.zig b/packages/native/src/buffer.zig
      }
  
      /// Reports whether a cell is inside the buffer and the active scissor. The bounds check runs
-@@ -860,10 +865,17 @@
+@@ -853,10 +858,17 @@
      pub fn isRectInScissor(self: *const OptimizedBuffer, x: i32, y: i32, width: u32, height: u32) bool {
          const scissor = self.getCurrentScissorRect() orelse return true;
  
@@ -201,7 +201,7 @@ diff --git a/packages/native/src/buffer.zig b/packages/native/src/buffer.zig
  
          return !(x >= scissor_end_x or rect_end_x <= scissor.x or
              y >= scissor_end_y or rect_end_y <= scissor.y);
-@@ -873,14 +885,16 @@
+@@ -866,14 +878,16 @@
          const scissor = self.getCurrentScissorRect() orelse return ClipRect{
              .x = x,
              .y = y,
@@ -224,7 +224,7 @@ diff --git a/packages/native/src/buffer.zig b/packages/native/src/buffer.zig
  
          const intersect_x = @max(x, scissor.x);
          const intersect_y = @max(y, scissor.y);
-@@ -1501,6 +1515,9 @@
+@@ -1494,6 +1508,9 @@
      }
  
      inline fn setCellWithAlphaBlendingCellWithoutImages(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
@@ -234,7 +234,7 @@ diff --git a/packages/native/src/buffer.zig b/packages/native/src/buffer.zig
          if (!self.isCellInBufferAndScissor(x, y)) return;
          const opacity = self.getCurrentOpacity();
          if (isFullyTransparent(opacity, cell.fg, cell.bg)) return;
-@@ -1556,6 +1573,9 @@
+@@ -1549,6 +1566,9 @@
      }
  
      fn setCellWithAlphaBlendingRawCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
@@ -244,7 +244,7 @@ diff --git a/packages/native/src/buffer.zig b/packages/native/src/buffer.zig
          if (!self.isCellInBufferAndScissor(x, y)) return;
  
          const opacity = self.getCurrentOpacity();
-@@ -2361,6 +2381,8 @@
+@@ -2354,6 +2374,8 @@
          x: i32,
          y: i32,
      ) !void {
@@ -253,7 +253,7 @@ diff --git a/packages/native/src/buffer.zig b/packages/native/src/buffer.zig
          view.setDrawY(y);
          const opacity = self.getCurrentOpacity();
          if (opacity == 0.0) return;
-@@ -3845,6 +3867,9 @@
+@@ -3841,6 +3863,9 @@
          if (termWidth == 0 or termHeight == 0) return;
          if (posX >= @as(i32, @intCast(self.width)) or posY >= @as(i32, @intCast(self.height))) return;
  
@@ -263,9 +263,9 @@ diff --git a/packages/native/src/buffer.zig b/packages/native/src/buffer.zig
          const startX: u32 = if (posX < 0) @abs(posX) else 0;
          const startY: u32 = if (posY < 0) @abs(posY) else 0;
  
-diff --git a/packages/native/src/clipboard/host.zig b/packages/native/src/clipboard/host.zig
---- a/packages/native/src/clipboard/host.zig
-+++ b/packages/native/src/clipboard/host.zig
+diff -ruN a/packages/native/src/clipboard/host.zig b/packages/native/src/clipboard/host.zig
+--- a/packages/native/src/clipboard/host.zig	2026-11-19 18:03:11.000000000 +0530
++++ b/packages/native/src/clipboard/host.zig	2026-11-24 11:49:02.826678749 +0530
 @@ -104,7 +104,7 @@
  
  fn tryJoinThread(thread: std.Thread) bool {

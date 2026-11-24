@@ -11,7 +11,7 @@ on:
       version:
         description: "Upstream v2 OpenCode version"
         required: true
-        default: "2.3.2"
+        default: "2.4.1"
         type: string
 
 permissions:
@@ -27,7 +27,7 @@ jobs:
       NDK_VERSION: "r30"
       BUN_VERSION: "1.4.4"
       BUN_ARCHIVE_SHA256: "d72e42c60e895ccbc16144bb1e0e0ad7ee384841c35b5501a7ec28b4d6d759c9"
-      OPENTUI_PKG_SHA1: "816d3ebd1f9edbc4e44f9f617e99c3fc49b5ae33"
+      OPENTUI_PKG_SHA1: "5445ef9d2622b70a73fe076e7a6505b493cd180e"
       CACHE_ROOT: ${{ github.workspace }}/.cache/opencode-v2
       WORK: ${{ github.workspace }}/work
 
@@ -38,7 +38,7 @@ jobs:
       - name: Validate v2 version input
         run: |
           [[ "$VERSION" =~ ^2\.[0-9]+\.[0-9]+$ ]] || {
-            echo "Only stable v2 versions (for example 2.3.2) are accepted: $VERSION" >&2
+            echo "Only stable v2 versions (for example 2.4.1) are accepted: $VERSION" >&2
             exit 1
           }
 
@@ -53,7 +53,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.CACHE_ROOT }}
-          key: opencode-v2-zig-0.17.0-${{ env.NDK_VERSION }}-${{ hashFiles('patches/opentui/android-bionic-0.8.4.patch') }}
+          key: opencode-v2-zig-0.17.0-${{ env.NDK_VERSION }}-${{ hashFiles('patches/opentui/android-bionic-0.9.4.patch') }}
 
       - name: Fetch Android NDK ${{ env.NDK_VERSION }}
         run: |
@@ -65,12 +65,12 @@ jobs:
           fi
           test -d "$CACHE_ROOT/ndk/android-ndk-$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
 
-      - name: Build bionic libopentui.so (0.8.4)
+      - name: Build bionic libopentui.so (0.9.4)
         env:
           NDK_SYSROOT: ${{ env.CACHE_ROOT }}/ndk/android-ndk-r30/toolchains/llvm/prebuilt/linux-x86_64/sysroot
           WORKDIR: ${{ env.CACHE_ROOT }}/opentui-build
           STRIP_BIN: aarch64-linux-gnu-strip
-        run: tools/transplant/build-libopentui-0.8.4.sh
+        run: tools/transplant/build-libopentui-0.9.4.sh
 
       - name: Fetch Android Bun base ${{ env.BUN_VERSION }}
         run: |
@@ -111,7 +111,7 @@ jobs:
         run: |
           python3 tools/transplant/swap_tui.py \
             --binary "artifacts/transplant/$VERSION/opencode-native-revived" \
-            --tui-lib "artifacts/transplant/opentui-0.8.4/libopentui.so" \
+            --tui-lib "artifacts/transplant/opentui-0.9.4/libopentui.so" \
             --out "artifacts/transplant/$VERSION/opencode-native-tui"
           test -x "artifacts/transplant/$VERSION/opencode-native-tui"
 
@@ -145,6 +145,6 @@ jobs:
             packing/dpkg-native/opencode_${{ env.VERSION }}_aarch64.deb
             packing/dpkg-native/opencode_${{ env.VERSION }}_aarch64.deb.sha256
             artifacts/transplant/${{ env.VERSION }}/report.json
-            artifacts/transplant/opentui-0.8.4/libopentui.so.sha256
+            artifacts/transplant/opentui-0.9.4/libopentui.so.sha256
           if-no-files-found: error
           retention-days: 14
